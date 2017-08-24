@@ -83,7 +83,7 @@ let rec merge_sort x =
 		x
 	else
 		merge (merge_sort (fst pair)) (merge_sort (snd pair)) []
-	;;
+;;
 
 (*------------------------------------------------------------------------*)
                      

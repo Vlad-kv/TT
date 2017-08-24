@@ -16,6 +16,10 @@ val is_alpha_equivalent: lambda -> lambda -> bool
 (* Выполнить один шаг бета-редукции, используя нормальный порядок *)
 val normal_beta_reduction: lambda -> lambda
 
+val unify_varaible_names: lambda -> lambda
+
+val alpha_equ_unification: lambda -> lambda
+
 (* Свести выражение к нормальной форме с использованием нормального
    порядка редукции; реализация должна быть эффективной: использовать 
    мемоизацию *)
