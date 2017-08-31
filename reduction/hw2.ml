@@ -221,17 +221,153 @@ let unify_varaible_names expr =
 	let res_2 = lock_unify expr (fst maps) (snd maps) StrSet.empty (snd res_1) in
 	(fst res_2)
 ;;
-let alpha_equ_unification expr = 
+let full_alpha_equ_unification expr = 
 	let set = get_set_of_free_vars expr StrSet.empty in
 	let res_1 = alpha_equ_build_maps (StrSet.elements set) StrMap.empty StrMap.empty in
 	let res_2 = lock_unify expr (fst res_1) (snd res_1) set ('a', 0) in
-	(fst res_2)
+	res_2
 ;;
+let alpha_equ_unification expr = fst (full_alpha_equ_unification expr);;
 
 (* Свести выражение к нормальной форме с использованием нормального
    порядка редукции; реализация должна быть эффективной: использовать 
    мемоизацию *)
-let reduce_to_normal_form first = failwith "---"
+let reduce_to_normal_form expr =
+	let rec get_map_of_vars expr_1 expr_2 map =
+		match (expr_1, expr_2) with
+		  | (App(expr_1_1, expr_1_2), App(expr_2_1, expr_2_2)) ->
+		  		let res = get_map_of_vars expr_1_1 expr_2_1 map in
+		  		get_map_of_vars expr_1_2 expr_2_2 res
+		  | (Abs(var_1, expr_1), Abs(var_2, expr_2)) ->
+		  		if (StrMap.mem var_1 map) then
+		  			failwith ("there are some different variables with the same name : " ^ var_1 ^ " (in get_map_of_vars)")
+		  		else
+		  			get_map_of_vars expr_1 expr_2 (StrMap.add var_1 var_2 map)
+		  | (Var(var_1), Var(var_2)) ->
+		  		if ((StrMap.mem var_1 map) && ((StrMap.find var_1 map) <> var_2)) then
+		  			failwith ("there are some different variables with the same name : " ^ var_1 ^ " (in get_map_of_vars)")
+		  		else
+		  			StrMap.add var_1 var_2 map
+		  | _ -> failwith "expressions not equivalent"
+	in
+	let rec rename_vars expr map = 
+		let find var map =
+			if (StrMap.mem var map) then StrMap.find var map
+			else 					var
+		in
+		match expr with
+		  | App(expr_1, expr_2) -> App(rename_vars expr_1 map, rename_vars expr_2 map)
+		  | Abs(var, expr)      -> Abs((find var map), rename_vars expr map)
+		  | Var(var)            -> Var(find var map)
+	in
+	let rec lok_reduction orig_expr memory used_global_vars next_var is_prev_was_app = (* return ((expr отредуцированное сколько смогли, обновлённый memory), 
+													(new_next_var следом за которой будут начинаться новые переменные, правда что отредуцировали до конца)) *)
+		let try_to_find expr memory =
+			let un_name = unify_varaible_names expr in
+			let str_un_name = string_of_lambda un_name in
+			let map = get_map_of_vars un_name expr StrMap.empty in
+			if (StrMap.mem str_un_name memory) then
+		  		rename_vars (StrMap.find str_un_name memory) map
+	  		else
+	  			expr
+		in
+		let substitute_with_renaming expr var new_expr next_var used_vars = (* return (new_expr, new_next_var) *)
+			let rec get_map_for_renaming expr first_var res_map =
+				match expr with
+				  | App(expr_1, expr_2) ->
+				  		let res_1 = get_map_for_renaming expr_1 first_var res_map in
+				  		get_map_for_renaming expr_2 (snd res_1) (fst res_1)
+				  | Abs(var, expr) ->
+				  		if (StrMap.mem var res_map) then
+				  			failwith ("there are some different variables with the same name : " ^ var ^ " (in get_map_for_renaming)")
+				  		else
+				  			let new_var = get_next_var first_var used_vars in
+				  			get_map_for_renaming expr new_var (StrMap.add var (string_of_var new_var) res_map)
+				  | Var(var) ->
+				  		let ret_map = 
+				  			if (not (StrMap.mem var res_map)) then StrMap.add var var res_map
+				  			else 							  res_map
+				  		in
+				  		(ret_map, first_var)
+			in
+			let rec substitute expr var_to_s new_expr next_var =
+				match expr with
+				  | App(expr_1, expr_2) ->
+				  		let res_1 = substitute expr_1 var_to_s new_expr next_var in
+				  		let res_2 = substitute expr_2 var_to_s new_expr (snd res_1) in
+				  		(App(fst res_1, fst res_2), snd res_2)
+				  | Abs(var, expr) -> 
+				  		if (var = var_to_s) then
+				  			failwith ("there are some different variables with the same name : " ^ var ^ " (in substitute in lok_reduction)")
+				  		else
+				  			let res = substitute expr var_to_s new_expr next_var in
+				  			(Abs(var, (fst res)), snd res)
+				  | Var(var) ->
+				  		if (var = var_to_s) then
+				  			let res_1 = get_map_for_renaming new_expr next_var StrMap.empty in
+				  			let res_expr = rename_vars new_expr (fst res_1) in
+				  			(res_expr, (snd res_1))
+				  		else
+				  			(Var(var), next_var)
+			in
+			substitute expr var new_expr next_var
+		in
+		let upd_memory orig_expr pair = 
+			let un_expr = unify_varaible_names orig_expr in
+			let str_un_expr = string_of_lambda un_expr in
+			(* print_string ("in upd_memory : " ^ (string_of_lambda orig_expr) ^ " # " ^ (string_of_lambda (fst (fst pair))) ^ "\n"); *)
+			let inv_map = get_map_of_vars orig_expr un_expr StrMap.empty in
+			if (snd (snd pair)) then
+				let res_expr = fst (fst pair) in
+				let memory = snd (fst pair) in
+				(* print_string (str_un_expr ^ " # " ^ (string_of_lambda (rename_vars res_expr inv_map)) ^ "  !!!\n"); *)
+				((res_expr, StrMap.add str_un_expr (rename_vars res_expr inv_map) memory), snd pair)
+			else
+				pair
+		in
+		let un_name = unify_varaible_names orig_expr in
+		let str_un_name = string_of_lambda un_name in
+		let map = get_map_of_vars un_name orig_expr StrMap.empty in
+		(* print_string ("in lok_reduction : " ^ (string_of_lambda orig_expr) ^ " | " ^ (string_of_var next_var) ^ "\n"); *)
+		if (StrMap.mem str_un_name memory) then
+  			let res = StrMap.find str_un_name memory in
+  			((rename_vars res map, memory), (next_var, true))
+  		else
+			match orig_expr with
+			  | App(Abs(var, expr_1), expr_2) ->
+			  		let expr_2 = try_to_find expr_2 memory in
+			  		let subst_expr_res = (substitute_with_renaming expr_1 var expr_2 next_var used_global_vars) in
+			  		let to_ret = lok_reduction (fst subst_expr_res) memory used_global_vars (snd subst_expr_res) is_prev_was_app in
+			  		upd_memory orig_expr to_ret
+			  | App(expr_1, expr_2) ->
+			  		let res_1 = lok_reduction expr_1 memory used_global_vars next_var true in
+			  		let memory =  snd (fst res_1) in
+			  		let res_expr = fst (fst res_1) in
+			  		let next_var = fst (snd res_1) in
+			  		let to_ret = 
+			  			match res_expr with
+			  			  | Abs(var, new_expr) ->
+			  			  		lok_reduction (App(res_expr, expr_2)) memory used_global_vars next_var is_prev_was_app
+			  			  | _ ->
+			  			  		let res_2 = lok_reduction expr_2 memory used_global_vars next_var false in
+			  			  		((App(res_expr, fst (fst res_2)), (snd (fst res_2))), snd res_2)
+				  	in
+				  	upd_memory orig_expr to_ret
+			  | Abs(var, expr) ->
+			  		if (is_prev_was_app) then
+			  			((Abs(var, expr), memory), (next_var, is_normal_form expr))
+			  		else
+			  			let res = lok_reduction expr memory used_global_vars next_var false in
+			  			let to_ret = ((Abs(var, (fst (fst res))), (snd (fst res))), (snd res)) in
+			  			upd_memory orig_expr to_ret
+			  | Var(var) ->
+			  		((orig_expr, memory), (next_var, true))
+	in
+	let res_1 = full_alpha_equ_unification expr in
+	let res_2 = (lok_reduction (fst res_1) StrMap.empty (get_set_of_free_vars (fst res_1) StrSet.empty) (snd res_1) false) in
+	(* let print key expr =
+		print_string(key ^ " : " ^ (string_of_lambda expr) ^ "\n")
+	in
+	StrMap.iter print (snd (fst res_2)); *)
+	(fst (fst res_2))
 ;;
-
-

@@ -1,6 +1,8 @@
 open Hw1;;
 open Hw2;;
 
+let _ = Gc.set {(Gc.get()) with Gc.stack_limit = 64 * 1024 * 1024};;
+
 let test_1_1 = lambda_of_string "\\a0.\\a2.a0";;
 let test_1_2 = lambda_of_string "\\a1.\\a0.a1";;
 assert ((is_alpha_equivalent test_1_1 test_1_2) == true);;
@@ -58,8 +60,35 @@ assert (is_alpha_equivalent (normal_beta_reduction test) test);;
 let check_name_unif expr =
 	let test = lambda_of_string expr in
 	assert (is_alpha_equivalent (alpha_equ_unification test) test);
-	print_string ((string_of_lambda (alpha_equ_unification test)) ^ "\n");;
+	print_string ((string_of_lambda (alpha_equ_unification test)) ^ "\n")
+;;
 
 check_name_unif "(\\x.\\y.\\z.y (x z x)) a1 a2";;
 check_name_unif "(\\a. (\\a. (\\a. (\\a. a a) a) a) a) a c";;
-check_name_unif "(\\a. (\\a. (\\a. a) (\\a. a) (\\a. a) (\\a. a) (\\a. a) a) a) f";
+check_name_unif "(\\a. (\\a. (\\a. a) (\\a. a) (\\a. a) (\\a. a) (\\a. a) a) a) f";;
+
+(*-----------------------------------------------------------*)
+
+let check_reduce_to_normal_form expr result =
+	let res = reduce_to_normal_form (lambda_of_string expr) in
+	print_string ((string_of_lambda res) ^ "\n");
+	assert (is_alpha_equivalent res (lambda_of_string result))
+;;
+
+check_reduce_to_normal_form "x x" "x x";;
+check_reduce_to_normal_form "(\\x.x x) (\\x.x z)" "z z";;
+
+let unreachable = "((\\x.x x) (\\x.x x))" in
+
+check_reduce_to_normal_form ("( (\\x.\\y. y c1 c2 x)"^unreachable^" )(\\x.\\y.\\z.x y)") "c1 c2";;
+
+check_reduce_to_normal_form ("(\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x)" ^
+							"((\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x)" ^
+							"((\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x)" ^
+							"((\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x) ((\\x.x x x)" ^
+										"(\\x.x)" ^
+							"))))))" ^
+							"))))))" ^
+							"))))))" ^
+							")))))")
+							"\\x.x";;
