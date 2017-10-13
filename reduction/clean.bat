@@ -1,1 +1,0 @@
-del *.cmi *.cmo *.exe
