@@ -115,4 +115,96 @@ let rec check_solution_with_map solution system =
 
 let check_solution solution system = check_solution_with_map (map_of_list_solution solution) system;;
 
-let solve_system x = failwith "Not implemented";;
+module DisjointSet = struct
+    module StrMap = Map.Make(String);;
+    type disjoint_set = {
+        mutable disp: string StrMap.t;
+    };;
+    let get_leader var disj_set = 
+    	let rec search var disj_set = 
+    		let in_pair = (StrMap.find var disj_set.disp) in
+    		if (in_pair = var) then
+    			var
+    		else
+    			begin
+    				let res = search in_pair disj_set in
+    				disj_set.disp <- (StrMap.add var res disj_set.disp);
+    				res
+    			end
+    	in
+    	if (StrMap.mem var disj_set.disp) then
+    		search var disj_set
+	    else
+	    	begin
+	    		disj_set.disp <- (StrMap.add var var disj_set.disp);
+	    		var
+	    	end
+	;;
+end;;
+
+module Data = struct
+	module StrSet = Set.Make(String);;
+	module StrMap = Map.Make(String);;
+	type data = {
+		disjoint_set: DisjointSet.disjoint_set;
+		mutable terms: StrSet.t StrMap.t;
+		mutable to_calculate: (algebraic_term * algebraic_term) list;
+		mutable modified: StrSet.t;
+	};;
+	let create_data l = {
+		disjoint_set = {disp = StrMap.empty;};
+		terms = StrMap.empty;
+		to_calculate = l;
+		modified = StrSet.empty;
+	};;
+	let print_state data =
+		print_string "disjoint_set:\n";
+		let lok_print first second =
+			print_string ("  " ^ first ^ " -> " ^ second ^ "\n")
+		in
+		StrMap.iter lok_print data.disjoint_set.disp;
+		print_string "terms:\n";
+		let lok_print var set = 
+			print_string ("  " ^ var ^ ":\n");
+			let print_set el = print_string ("    " ^ el ^ "\n") in
+			StrSet.iter print_set set
+		in
+		StrMap.iter lok_print data.terms;
+		let rec print_calculate l = 
+			if (l <> []) then
+				begin
+					let head = List.hd l in
+					print_string (
+						"  " ^
+						(string_of_algebraic_term (fst head)) ^
+						" = " ^
+						(string_of_algebraic_term (snd head)) ^
+						"\n"
+					);
+					print_calculate (List.tl l)
+				end
+		in
+		print_string "to_calculate:\n";
+		print_calculate data.to_calculate;
+		print_string "modified:\n";
+		let lok_print var = print_string ("  " ^ var ^ "\n") in
+		StrSet.iter lok_print data.modified;
+		print_string "--------\n"
+	;;
+end;;
+
+let solve_system_with_map system =
+	let rec solve data =
+		Data.print_state data;
+		failwith "Not implemented"
+	in
+	solve (Data.create_data system)
+;;
+let system = [
+	(Var("x_1"), Var("x_2"));
+	(Fun("f1", [Var("x_3"); Var("x_4")]), Var("x_5"))
+];;
+
+let test = solve_system_with_map system;;
+
+let solve_system system = failwith "Not implemented";;(* StrMap.bindings (solve_system_with_map system);; *)
