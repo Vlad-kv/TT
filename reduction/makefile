@@ -1,4 +1,4 @@
-.PHONY: build ..\peano_and_parser\camlprog.exe
+.PHONY: build_and_run ..\peano_and_parser\camlprog.exe
 build_and_run: camlprog.exe
 	camlprog.exe
 ..\peano_and_parser\camlprog.exe:

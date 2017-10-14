@@ -32,13 +32,14 @@ module Unique_name_getter = struct
 end;;
 
 module StrSet = Set.Make(String);;
+module StrMap = Map.Make(String);;
 
-let rec algebraic_term_to_string term =
+let rec string_of_algebraic_term term =
 	let rec list_to_string l =
 		if (l == []) then
 			""
 		else
-			(algebraic_term_to_string (List.hd l)) ^ " " ^ (list_to_string (List.tl l))
+			(string_of_algebraic_term (List.hd l)) ^ " " ^ (list_to_string (List.tl l))
 	in
 	match term with
       | Var(str) -> str
@@ -72,6 +73,46 @@ let system_to_equation list_of_pairs =
 	(Fun(unique_name, (fst res)), Fun(unique_name, (snd res)))
 ;;
 
-let apply_substitution x y = failwith "Not implemented";;
-let check_solution x y = failwith "Not implemented";;
+let rec map_of_list_solution rules = 
+	if (rules = []) then
+		StrMap.empty
+	else
+		let first = List.hd rules in
+		StrMap.add (fst first) (snd first) (map_of_list_solution (List.tl rules))
+;;
+
+let rec apply_substitution_with_map rules term =
+	let rec subst_in_list rules l =
+		if (l == []) then
+			[]
+		else
+			(apply_substitution_with_map rules (List.hd l)) :: (subst_in_list rules (List.tl l))
+	in
+	match term with
+	  | Var(str) ->
+	  		if (StrMap.mem str rules) then
+	  			StrMap.find str rules
+	  		else
+	  			Var(str)
+	  | Fun(str, l) -> Fun(str, (subst_in_list rules l))
+;;
+
+let apply_substitution rules term = apply_substitution_with_map (map_of_list_solution rules) term;;
+
+let rec check_solution_with_map solution system =
+	let rec check_equation solution pair =
+		(apply_substitution_with_map solution (fst pair)) = (apply_substitution_with_map solution (snd pair))
+	in
+	if (system = []) then
+		true
+	else
+		let res = check_equation solution (List.hd system) in
+		if (res == true) then
+			check_solution_with_map solution (List.tl system)
+		else
+			false
+;;
+
+let check_solution solution system = check_solution_with_map (map_of_list_solution solution) system;;
+
 let solve_system x = failwith "Not implemented";;

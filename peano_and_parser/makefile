@@ -1,4 +1,4 @@
-.PHONY: build
+.PHONY: build_and_run
 build_and_run: camlprog.exe
 	camlprog.exe
 camlprog.exe: hw1.mli hw1.ml test_1.ml
