@@ -120,6 +120,9 @@ module DisjointSet = struct
     type disjoint_set = {
         mutable disp: string StrMap.t;
     };;
+    let create = {disp = StrMap.empty;};;
+    let clear disjoint_set = disjoint_set.disp <- StrMap.empty;;
+    let iter func disj_set = StrMap.iter func disj_set.disp;;
     let get_leader var disj_set = 
     	let rec search var disj_set = 
     		let in_pair = (StrMap.find var disj_set.disp) in
@@ -140,6 +143,29 @@ module DisjointSet = struct
 	    		var
 	    	end
 	;;
+	let add_link var_1 var_2 disj_set =
+		assert(((get_leader var_1 disj_set) = var_1) && ((get_leader var_2 disj_set) = var_2));
+		disj_set.disp <- (StrMap.add var_1 var_2 disj_set.disp)
+	;;
+	let rec update_to_leaders term disj_set =
+		let rec upd_list l disj_set =
+			if (l = []) then
+				[]
+			else
+				(update_to_leaders (List.hd l) disj_set) :: (upd_list (List.tl l) disj_set)
+		in
+		match term with
+		  | Var(str) -> Var(get_leader str disj_set)
+		  | Fun(f, l) -> Fun(f, (upd_list l disj_set))
+	;;
+	let rec get_not_trivial_pairs disj_set =
+		let modify value = get_leader value disj_set in
+		let res = StrMap.map modify disj_set.disp in
+		let filter key value = (key <> value) in
+		let res = StrMap.filter filter res in
+		let modify value = Var(value) in
+		StrMap.map modify res
+	;;
 end;;
 
 module Data = struct
@@ -147,29 +173,35 @@ module Data = struct
 	module StrMap = Map.Make(String);;
 	type data = {
 		disjoint_set: DisjointSet.disjoint_set;
-		mutable terms: StrSet.t StrMap.t;
+		mutable equations: algebraic_term StrMap.t;
 		mutable to_calculate: (algebraic_term * algebraic_term) list;
-		mutable modified: StrSet.t;
 	};;
-	let create_data l = {
-		disjoint_set = {disp = StrMap.empty;};
-		terms = StrMap.empty;
-		to_calculate = l;
-		modified = StrSet.empty;
-	};;
+	let create l = 
+		let clear data =
+			DisjointSet.clear data.disjoint_set;
+			data.equations <- StrMap.empty;
+			data.to_calculate <- [];
+		in
+		let res = {
+			disjoint_set = DisjointSet.create;
+			equations = StrMap.empty;
+			to_calculate = [];
+		} in
+		clear res;
+		res.to_calculate <- l;
+		res
+	;;
 	let print_state data =
-		print_string "disjoint_set:\n";
+		print_string "\ndisjoint_set:\n";
 		let lok_print first second =
 			print_string ("  " ^ first ^ " -> " ^ second ^ "\n")
 		in
-		StrMap.iter lok_print data.disjoint_set.disp;
-		print_string "terms:\n";
-		let lok_print var set = 
-			print_string ("  " ^ var ^ ":\n");
-			let print_set el = print_string ("    " ^ el ^ "\n") in
-			StrSet.iter print_set set
+		DisjointSet.iter lok_print data.disjoint_set;
+		print_string "equations:\n";
+		let lok_print var term = 
+			print_string ("  " ^ var ^ " = " ^ (string_of_algebraic_term term) ^ "\n");
 		in
-		StrMap.iter lok_print data.terms;
+		StrMap.iter lok_print data.equations;
 		let rec print_calculate l = 
 			if (l <> []) then
 				begin
@@ -186,25 +218,173 @@ module Data = struct
 		in
 		print_string "to_calculate:\n";
 		print_calculate data.to_calculate;
-		print_string "modified:\n";
-		let lok_print var = print_string ("  " ^ var ^ "\n") in
-		StrSet.iter lok_print data.modified;
 		print_string "--------\n"
+	;;
+	let extract_head data =
+		let res = List.hd data.to_calculate in
+		data.to_calculate <- (List.tl data.to_calculate);
+		res
+	;;
+	let get_to_calculate data = data.to_calculate;;
+	let add_equation_to_calculate pair data = data.to_calculate <- pair :: data.to_calculate;;
+
+	let rec calc_var_term var_1 term data = 
+		let var_1 = DisjointSet.get_leader var_1 data.disjoint_set in
+		if (StrMap.mem var_1 data.equations) then
+			let main_val = StrMap.find var_1 data.equations in
+			data.to_calculate <- (main_val, term) :: data.to_calculate
+		else
+			data.equations <- StrMap.add var_1 term data.equations
+	;;
+	let get_leader var data = DisjointSet.get_leader var data.disjoint_set;;
+	let add_link var_1 var_2 data =
+		let upd leader_1 leader_2 data = 
+			if (StrMap.mem leader_1 data.equations) then
+				begin
+					calc_var_term leader_2 (StrMap.find leader_1 data.equations) data;
+					data.equations <- (StrMap.remove leader_1 data.equations)
+				end;
+			DisjointSet.add_link leader_1 leader_2 data.disjoint_set
+		in
+		let var_1 = DisjointSet.get_leader var_1 data.disjoint_set in
+		let var_2 = DisjointSet.get_leader var_2 data.disjoint_set in
+		if (var_1 < var_2) then
+			upd var_1 var_2 data
+		else
+			upd var_2 var_1 data
+	;;
+	let update_to_leaders data =
+		assert(data.to_calculate = []);
+		let convert term = DisjointSet.update_to_leaders term data.disjoint_set in
+		data.equations <- (StrMap.map convert data.equations)
+	;;
+	type result = {
+		mutable map: algebraic_term StrMap.t;
+		mutable is_it_fail: bool;
+	};;
+	let create_solution_from_equations data =
+		let rec restore_var result var used_vars equations =
+			if (StrMap.mem var result.map) then
+				Some (StrMap.find var result.map)
+			else if (StrSet.mem var used_vars) then
+				None
+			else if (not (StrMap.mem var equations)) then
+				Some (Var(var))
+			else
+				let used_vars = StrSet.add var used_vars in
+				let term = StrMap.find var equations in
+				let res = restore_term result term used_vars equations in
+				match res with
+				  | None -> None
+				  | Some not_none ->
+				  		begin
+							result.map <- StrMap.add var not_none result.map;
+							Some not_none
+						end
+		and restore_term result term used_vars equations =
+			match term with
+			  | Var(str) -> restore_var result str used_vars equations
+			  | Fun(f, l) ->
+			  		let res = restore_list result l used_vars equations in
+			  		match res with
+			  		  | None -> None
+			  		  | Some not_none -> Some (Fun(f, not_none))
+		and restore_list result l used_vars equations = 
+			if (l = []) then
+				Some []
+			else
+				begin
+					let res_1 = restore_term result (List.hd l) used_vars equations in
+					let res_2 = restore_list result (List.tl l) used_vars equations in
+					match (res_1, res_2) with
+					  | ((Some not_none_1), (Some not_none_2)) -> Some (not_none_1 :: not_none_2)
+					  | _ -> None
+				end
+		in
+		let result = {
+			map = StrMap.empty;
+			is_it_fail = false;
+		} in
+		let func key unused =
+			if (not (StrMap.mem key result.map)) then
+				begin
+					let res = restore_var result key StrSet.empty data.equations in
+					if (res = None) then
+						result.is_it_fail <- true
+				end
+		in
+		StrMap.iter func data.equations;
+		if (result.is_it_fail = true) then
+			None
+		else
+			begin
+				let choice key val_1 val_2 =
+					match (val_1, val_2) with
+					  | (None, None) -> None
+					  | (Some(v_1), None) -> Some(v_1)
+					  | (None, Some(v_2)) -> Some(v_2)
+					  | (Some(v_2), Some(v_1)) ->
+					  		begin
+					  			print_string ((string_of_algebraic_term v_2) ^ " " ^ (string_of_algebraic_term v_1) ^ "\n");
+					  			assert(false);
+					  			None
+					  		end
+				in
+				let res_2 = DisjointSet.get_not_trivial_pairs data.disjoint_set in
+				Some (StrMap.merge choice res_2 result.map)
+			end
 	;;
 end;;
 
 let solve_system_with_map system =
 	let rec solve data =
-		Data.print_state data;
-		failwith "Not implemented"
+		let rec calc_var_term var_1 term data = 
+			Data.calc_var_term var_1 term data;
+			solve data
+		in
+		let rec calc_var_var var_1 var_2 data =
+			Data.add_link var_1 var_2 data;
+			solve data
+		in
+		let rec calc_term_term term_1_f term_1_l term_2_f term_2_l data =
+			let rec convert l_1 l_2 data =
+				if ((l_1 = []) || (l_2 = [])) then
+					if (l_1 = l_2) then
+						solve data
+					else
+						None
+				else
+					begin
+						Data.add_equation_to_calculate ((List.hd l_1), (List.hd l_2)) data;
+						convert (List.tl l_1) (List.tl l_2) data
+					end
+			in
+			if (term_1_f <> term_2_f) then
+				None
+			else
+				convert term_1_l term_2_l data
+		in
+		(* Data.print_state data; *)
+		if (Data.get_to_calculate data = []) then
+			begin
+				Data.update_to_leaders data;
+				(* Data.print_state data; *)
+				Data.create_solution_from_equations data
+			end
+		else
+			let head = Data.extract_head data in
+			match head with
+			  | (Var(str_1), Var(str_2)) -> calc_var_var str_1 str_2 data
+			  | (Var(str_1), t_2) -> calc_var_term str_1 t_2 data
+			  | (t_1, Var(str_2)) -> calc_var_term str_2 t_1 data
+			  | (Fun(str_1, l_1), Fun(str_2, l_2)) -> calc_term_term str_1 l_1 str_2 l_2 data
 	in
-	solve (Data.create_data system)
+	solve (Data.create system)
 ;;
-let system = [
-	(Var("x_1"), Var("x_2"));
-	(Fun("f1", [Var("x_3"); Var("x_4")]), Var("x_5"))
-];;
 
-let test = solve_system_with_map system;;
-
-let solve_system system = failwith "Not implemented";;(* StrMap.bindings (solve_system_with_map system);; *)
+let solve_system system = 
+	let res = solve_system_with_map system in
+	match res with
+	  | None -> None
+	  | Some solution -> Some (StrMap.bindings solution)
+;;

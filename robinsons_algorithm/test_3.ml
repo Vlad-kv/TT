@@ -42,3 +42,61 @@ let solution = [
 ];;
 assert(not (check_solution solution system));;
 (*-----------------------------*)
+
+let check system expected_res = 
+	print_string "system:\n";
+	let lok_print pair =
+		print_string ("  " ^ (string_of_algebraic_term (fst pair)) ^ " = " ^ (string_of_algebraic_term (snd pair)) ^ "\n");
+	in
+	List.iter lok_print system;
+	let result = solve_system system in
+	begin
+		match result with
+		  | None ->
+		  		print_string "no solution\n";
+		  		assert(expected_res = false);
+		  | Some solution ->
+		  		begin
+			  		print_string "solution:\n";
+			  		let lok_print pair =
+						print_string ("  " ^ (fst pair) ^ " = " ^ (string_of_algebraic_term (snd pair)) ^ "\n");
+					in
+					List.iter lok_print solution;
+					assert(check_solution solution system);
+					assert(expected_res);
+				end
+	end;
+	print_string "\n";
+;;
+
+let system = [
+	(Var("x_1"), Var("x_2"));
+	(Fun("f1", [Var("x_1"); Var("x_4")]), Var("x_5"));
+	(Fun("f1", [Var("a"); Var("b")]), Var("x_5"));
+];;
+check system true;;
+
+check [
+	(Var("x_1"), Fun("f", [Var("x_2"); Var("a")]));
+	(Var("x_2"), Fun("f", [Var("x_3"); Var("b")]));
+	(Var("x_3"), Fun("f", [Var("x_1"); Var("c")]));
+] false;;
+
+check [
+	(Var("x_1"), Fun("f", [Var("x_2"); Var("a")]));
+	(Var("x_2"), Fun("f", [Var("x_3"); Var("b")]));
+	(Var("x_3"), Fun("f", [Var("x_4"); Var("c")]));
+] true;;
+
+check [
+	(Var("x_1"), Fun("f", [Var("x_2"); Var("a")]));
+	(Var("x_2"), Fun("f", [Var("x_3"); Var("b")]));
+	(Var("x_1"), Var("x_2"));
+] false;;
+
+check [
+	(Var("x_1"), Var("x_2"));
+	(Var("x_2"), Var("x_3"));
+	(Var("x_3"), Var("x_4"));
+	(Var("x_4"), Var("x_4"));
+] true;;
