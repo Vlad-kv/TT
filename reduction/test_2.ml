@@ -59,8 +59,8 @@ assert (is_alpha_equivalent (normal_beta_reduction test) test);;
 
 let check_name_unif expr =
 	let test = lambda_of_string expr in
-	assert (is_alpha_equivalent (alpha_equ_unification test) test);
-	print_string ((string_of_lambda (alpha_equ_unification test)) ^ "\n")
+	assert (is_alpha_equivalent (alpha_equ_unification_of_names test) test);
+	print_string ((string_of_lambda (alpha_equ_unification_of_names test)) ^ "\n")
 ;;
 
 check_name_unif "(\\x.\\y.\\z.y (x z x)) a1 a2";;

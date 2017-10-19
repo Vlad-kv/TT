@@ -248,10 +248,11 @@ module Data = struct
 		in
 		let var_1 = DisjointSet.get_leader var_1 data.disjoint_set in
 		let var_2 = DisjointSet.get_leader var_2 data.disjoint_set in
-		if (var_1 < var_2) then
+		if (var_1 > var_2) then
 			upd var_1 var_2 data
 		else
-			upd var_2 var_1 data
+			if (var_1 <> var_2) then
+				upd var_2 var_1 data
 	;;
 	let update_to_leaders data =
 		assert(data.to_calculate = []);
@@ -313,26 +314,25 @@ module Data = struct
 						result.is_it_fail <- true
 				end
 		in
+		let choice key val_1 val_2 =
+			match (val_1, val_2) with
+			  | (None, None) -> None
+			  | (Some(v_1), None) -> Some(v_1)
+			  | (None, Some(v_2)) -> Some(v_2)
+			  | (Some(v_2), Some(v_1)) ->
+			  		begin
+			  			print_string ((string_of_algebraic_term v_2) ^ " " ^ (string_of_algebraic_term v_1) ^ "\n");
+			  			assert(false);
+			  			None
+			  		end
+		in
+		let res_2 = DisjointSet.get_not_trivial_pairs data.disjoint_set in
+		data.equations <- (StrMap.merge choice res_2 data.equations);
 		StrMap.iter func data.equations;
 		if (result.is_it_fail = true) then
 			None
 		else
-			begin
-				let choice key val_1 val_2 =
-					match (val_1, val_2) with
-					  | (None, None) -> None
-					  | (Some(v_1), None) -> Some(v_1)
-					  | (None, Some(v_2)) -> Some(v_2)
-					  | (Some(v_2), Some(v_1)) ->
-					  		begin
-					  			print_string ((string_of_algebraic_term v_2) ^ " " ^ (string_of_algebraic_term v_1) ^ "\n");
-					  			assert(false);
-					  			None
-					  		end
-				in
-				let res_2 = DisjointSet.get_not_trivial_pairs data.disjoint_set in
-				Some (StrMap.merge choice res_2 result.map)
-			end
+			Some (result.map)
 	;;
 end;;
 

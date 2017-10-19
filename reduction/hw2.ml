@@ -227,7 +227,7 @@ let full_alpha_equ_unification expr =
 	let res_2 = lock_unify expr (fst res_1) (snd res_1) set ('a', 0) in
 	res_2
 ;;
-let alpha_equ_unification expr = fst (full_alpha_equ_unification expr);;
+let alpha_equ_unification_of_names expr = fst (full_alpha_equ_unification expr);;
 
 (* Свести выражение к нормальной форме с использованием нормального
    порядка редукции; реализация должна быть эффективной: использовать 

@@ -100,3 +100,14 @@ check [
 	(Var("x_3"), Var("x_4"));
 	(Var("x_4"), Var("x_4"));
 ] true;;
+
+check [
+	(Var("t_<\\f.<\\x.<f_<f_x>>>>"), Fun("f", [Var("a_f"); Var("t_<\\x.<f_<f_x>>>")]));
+	(Var("t_<\\x.<f_<f_x>>>"), Fun("f", [Var("a_x"); Var("t_<f_<f_x>>")]));
+	(Var("t_f"), Fun("f", [Var("t_<f_x>"); Var("t_<f_<f_x>>")]));
+	(Var("t_f"), Fun("f", [Var("t_x"); Var("t_<f_x>")]));
+	(Var("a_x"), Var("t_x"));
+	(Var("a_f"), Var("t_f"));
+	(Var("a_f"), Var("t_f"));
+] true;;
+

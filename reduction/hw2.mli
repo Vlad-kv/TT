@@ -18,7 +18,7 @@ val normal_beta_reduction: lambda -> lambda
 
 val unify_varaible_names: lambda -> lambda
 
-val alpha_equ_unification: lambda -> lambda
+val alpha_equ_unification_of_names: lambda -> lambda
 
 (* Свести выражение к нормальной форме с использованием нормального
    порядка редукции; реализация должна быть эффективной: использовать 
