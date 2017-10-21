@@ -84,6 +84,7 @@ let rec get_set_of_free_vars expr locked_vars =
 	  		get_set_of_free_vars expr (StrSet.add str locked_vars)
 ;;
 
+(* Возвращает list из свободных переменных. *)
 let rec free_vars expr = StrSet.elements (get_set_of_free_vars expr StrSet.empty);;
 
 let free_to_subst substituted where_to_substitute var =
@@ -167,6 +168,7 @@ let next_var var =
 	else
 		('a', (snd var) + 1)
 ;;
+(* Выдаёт следующую поле var неиспользованную переменную.*)
 let rec get_next_var var used_vars =
 	let new_var = next_var var in
 	if (StrSet.mem (string_of_var new_var) used_vars) then
@@ -174,22 +176,31 @@ let rec get_next_var var used_vars =
 	else
 		new_var
 ;;
-let rec build_maps vars number_of_similar_vars new_vars used_vars next_var = 
-	if (vars = []) then
-		((number_of_similar_vars, new_vars), next_var)
-	else
-		build_maps (List.tl vars)
-			(StrMap.add (List.hd vars) 1 number_of_similar_vars)
-			(StrMap.add ("1#" ^ (List.hd vars)) (string_of_var next_var) new_vars)
-			used_vars
-			(get_next_var next_var used_vars)
-;;
+(* По map-у (ответственному за хранение информации за количестве переменных) и имени переменной получает 
+  количество этих переменных.
+*)
 let get_number_of_sim_vars var number_of_similar_vars = 
 	if (StrMap.mem var number_of_similar_vars) then
 		StrMap.find var number_of_similar_vars
 	else
 		0
 ;;
+(* Принимает:
+	- expr - выражение, которое хочется привести к общему виду;
+	- number_of_similar_vars - map из string в int - хранит информацию о количестве одинаковых переменных;
+	- new_vars - map из string в string - отображение вида number#var -> new_name_of_var;
+	- used_vars - set из использованных переменных;
+	- next_var - переменная, начиная с которой будут подбираться новые переменные;
+	
+		Цели - преобразовать expr к общему виду, который зависит только от его структуры и соответствующих входных параметров,
+	кроме того общий вид не должен иметь переменные и переиспользованными названиями (если только used_vars не сделает это невозможным,
+	но в таких случаях lock_unify не употребляется).
+		Отображение вида number#var -> new_name_of_var сделано для работы с вложенным переиспользованием имён
+	(например (\x.(\x.(\x.x)x)x) ) - то есть "количество одинаковых переменных" - уровень вложенности соответствующей переменной в данный момент.
+	Для каждой переменной можно легко посчитать уровень вложенности и по нему найти соответствующее отображение.
+	
+	Возвращает: (new_expr, new_next_var) - пару из преобразованного выражения и новой переменной с которой начнётся подбор.
+*)
 let rec lock_unify expr number_of_similar_vars new_vars used_vars next_var =
 	match expr with
 	  | App(expr_1, expr_2) ->
@@ -206,26 +217,43 @@ let rec lock_unify expr number_of_similar_vars new_vars used_vars next_var =
 			let number = get_number_of_sim_vars var number_of_similar_vars in
 	  		(Var(StrMap.find ((string_of_int number) ^ "#" ^ var) new_vars), next_var)
 ;;
-let rec alpha_equ_build_maps vars number_of_similar_vars new_vars =
-	if (vars = []) then
-		(number_of_similar_vars, new_vars)
-	else
-		alpha_equ_build_maps (List.tl vars)
-			(StrMap.add (List.hd vars) 1 number_of_similar_vars)
-			(StrMap.add ("1#" ^ (List.hd vars)) (List.hd vars) new_vars)
-;;
-
+(* Преобразует выражение в стандартизированный вид (сохраняя структуру), переименовывает в том числе и глобальные переменные. *)
 let unify_varaible_names expr = 
-	let res_1 = build_maps (free_vars expr) StrMap.empty StrMap.empty StrSet.empty ('a', 0) in
+	(* По list-у из глобальных переменных строит number_of_similar_vars и new_vars для lock_unify, где глобальным переменным присваевается
+	  уровень вложенности 1 (в формате как и у lock_unify).
+	   Возвращает ((new_number_of_similar_vars, new_new_vars), new_next_var) - итоговые map-ы и переменная, с которой начнётся подбор.
+	*)
+	let rec build_maps vars number_of_similar_vars new_vars next_var = 
+		if (vars = []) then
+			((number_of_similar_vars, new_vars), next_var)
+		else
+			build_maps (List.tl vars)
+				(StrMap.add (List.hd vars) 1 number_of_similar_vars)
+				(StrMap.add ("1#" ^ (List.hd vars)) (string_of_var next_var) new_vars)
+				(get_next_var next_var StrSet.empty)
+	in
+	let res_1 = build_maps (free_vars expr) StrMap.empty StrMap.empty ('a', 0) in
 	let maps = fst res_1 in
 	let res_2 = lock_unify expr (fst maps) (snd maps) StrSet.empty (snd res_1) in
 	(fst res_2)
 ;;
+(* Далает то же, что и unify_varaible_names, но с условием что новое выражение останется альфа-эквивалентным сторому (то есть
+  переименовывает только связанные переменные).
+   Возвращает (new_expr, new_next_var).*)
 let full_alpha_equ_unification expr = 
+	(* То же, что и build_maps в unify_varaible_names, но оставляет имена глобальных переменных оригинальными.
+	   Возвращает (new_number_of_similar_vars, new_new_vars). *)
+	let rec alpha_equ_build_maps vars number_of_similar_vars new_vars =
+		if (vars = []) then
+			(number_of_similar_vars, new_vars)
+		else
+			alpha_equ_build_maps (List.tl vars)
+				(StrMap.add (List.hd vars) 1 number_of_similar_vars)
+				(StrMap.add ("1#" ^ (List.hd vars)) (List.hd vars) new_vars)
+	in
 	let set = get_set_of_free_vars expr StrSet.empty in
 	let res_1 = alpha_equ_build_maps (StrSet.elements set) StrMap.empty StrMap.empty in
-	let res_2 = lock_unify expr (fst res_1) (snd res_1) set ('a', 0) in
-	res_2
+	lock_unify expr (fst res_1) (snd res_1) set ('a', 0)
 ;;
 let alpha_equ_unification_of_names expr = fst (full_alpha_equ_unification expr);;
 
@@ -233,6 +261,8 @@ let alpha_equ_unification_of_names expr = fst (full_alpha_equ_unification expr);
    порядка редукции; реализация должна быть эффективной: использовать 
    мемоизацию *)
 let reduce_to_normal_form expr =
+	(* По двум структурно эквивалентным выражениям строит отображение из имён первого выражения во второе, при этом в первом выражении все
+	   переменные должны иметь различные имена. *)
 	let rec get_map_of_vars expr_1 expr_2 map =
 		match (expr_1, expr_2) with
 		  | (App(expr_1_1, expr_1_2), App(expr_2_1, expr_2_2)) ->
@@ -260,8 +290,21 @@ let reduce_to_normal_form expr =
 		  | Abs(var, expr)      -> Abs((find var map), rename_vars expr map)
 		  | Var(var)            -> Var(find var map)
 	in
-	let rec lok_reduction orig_expr memory used_global_vars next_var is_prev_was_app = (* return ((expr отредуцированное сколько смогли, обновлённый memory), 
-													(new_next_var следом за которой будут начинаться новые переменные, правда что отредуцировали до конца)) *)
+	(* Принимает:
+	  - orig_expr - выражение, которое надо отредуцировать;
+	  - memory - map из string в lambda - если какое-либо выражение (expr) когда-то было полностью отредуцированно, то в memory для строкового
+	      стандартизированного expr будет храниться отображение в результат редукции стандартизированного expr типа lambda;
+	  - used_global_vars - использованные (глобальные) переменные (нужны для substitute_with_renaming);
+	  - next_var - переменная, начиная с которой будт подбираться новые уникальные переменные;
+	  - is_prev_was_app - истина, если сейчас редуцируется некоторое подвыражение, которое стояло в оригинальном в левой части аппликации - если
+	      выражение, редуцируемое сейчас, в какой-то момент станет абстракцией, необходимо остановить редукцию - оно может не иметь нормальной
+	      формы, а после подстановки она может появиться;
+	  Основная функция. Редуцирует, обновляет memory и т.д. TODO
+
+	  Возвращает: ((new_expr, new_memory), (new_next_var, is_it_fully_reducted)), где is_it_fully_reducted - отредуцировали ли выражение до конца.
+	*)
+	let rec lok_reduction orig_expr memory used_global_vars next_var is_prev_was_app =
+		(* Если данное выражение раньше отредуцировалось, то возвращает результат, иначе - возвращает его самого. *)
 		let try_to_find expr memory =
 			let un_name = unify_varaible_names expr in
 			let str_un_name = string_of_lambda un_name in
@@ -271,24 +314,27 @@ let reduce_to_normal_form expr =
 	  		else
 	  			expr
 		in
-		let substitute_with_renaming expr var new_expr next_var used_vars = (* return (new_expr, new_next_var) *)
-			let rec get_map_for_renaming expr first_var res_map =
+		(* Выполняет подстановку и заодно переименовывает связанные переменные при каждой подстановке в new_expr для того, чтобы не было повторяющихся
+		   имён переменных.
+		   Возвращает: (new_expr, new_next_var)*)
+		let substitute_with_renaming expr var new_expr next_var used_vars =
+			let rec get_map_for_renaming expr next_var res_map =
 				match expr with
 				  | App(expr_1, expr_2) ->
-				  		let res_1 = get_map_for_renaming expr_1 first_var res_map in
+				  		let res_1 = get_map_for_renaming expr_1 next_var res_map in
 				  		get_map_for_renaming expr_2 (snd res_1) (fst res_1)
 				  | Abs(var, expr) ->
 				  		if (StrMap.mem var res_map) then
 				  			failwith ("there are some different variables with the same name : " ^ var ^ " (in get_map_for_renaming)")
 				  		else
-				  			let new_var = get_next_var first_var used_vars in
+				  			let new_var = get_next_var next_var used_vars in
 				  			get_map_for_renaming expr new_var (StrMap.add var (string_of_var new_var) res_map)
 				  | Var(var) ->
 				  		let ret_map = 
 				  			if (not (StrMap.mem var res_map)) then StrMap.add var var res_map
 				  			else 							  res_map
 				  		in
-				  		(ret_map, first_var)
+				  		(ret_map, next_var)
 			in
 			let rec substitute expr var_to_s new_expr next_var =
 				match expr with
@@ -312,6 +358,13 @@ let reduce_to_normal_form expr =
 			in
 			substitute expr var new_expr next_var
 		in
+		(* Принимает:
+		   - orig_expr - оригинальное выражение, которое надо было отредуцировать (прямо из lok_reduction);
+		   - pair - ((new_expr, new_memory), (new_next_var, is_it_fully_reducted)) - то самое значение, которое готово отправится вызывавшему
+		       lok_reduction, но прежде чем отправить, если new_expr отредуцирован до конца, то добавим в memory соосветствующую запись, иначе-
+		       вернём что и собирались.
+		   Возвращает: ((new_expr, updated_new_memory), (new_next_var, is_it_fully_reducted))
+		*)
 		let upd_memory orig_expr pair = 
 			let un_expr = unify_varaible_names orig_expr in
 			let str_un_expr = string_of_lambda un_expr in
