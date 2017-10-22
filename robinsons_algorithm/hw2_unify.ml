@@ -248,7 +248,38 @@ module Data = struct
 		in
 		let var_1 = DisjointSet.get_leader var_1 data.disjoint_set in
 		let var_2 = DisjointSet.get_leader var_2 data.disjoint_set in
-		if (var_1 > var_2) then
+		let is_less var_1 var_2 =
+			let first_char str =
+				if ((String.length str) = 0) then
+					'_'
+				else
+					str.[0]
+			in
+			let c_1 = first_char var_1 in
+			let c_2 = first_char var_2 in
+			if (c_1 < c_2) then
+				true
+			else if (c_1 > c_2) then
+				false
+			else
+			begin
+				let is_composite str =
+					if (String.contains str '<') then       true
+					else if (String.contains str '.') then  true
+					else if (String.contains str '\\') then true
+					else                                    false
+				in
+				let c_1 = is_composite var_1 in
+				let c_2 = is_composite var_2 in
+				if ((c_1 = false) && (c_2 = true)) then
+					true
+				else if ((c_1 = true) && (c_2 = false)) then
+					false
+				else
+					(var_1 < var_2)
+			end
+		in
+		if (is_less var_2 var_1) then
 			upd var_1 var_2 data
 		else
 			if (var_1 <> var_2) then

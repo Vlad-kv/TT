@@ -253,7 +253,7 @@ let full_alpha_equ_unification expr =
 	in
 	let set = get_set_of_free_vars expr StrSet.empty in
 	let res_1 = alpha_equ_build_maps (StrSet.elements set) StrMap.empty StrMap.empty in
-	lock_unify expr (fst res_1) (snd res_1) set ('a', 0)
+	lock_unify expr (fst res_1) (snd res_1) set (get_next_var ('z', -1) set)
 ;;
 let alpha_equ_unification_of_names expr = fst (full_alpha_equ_unification expr);;
 
