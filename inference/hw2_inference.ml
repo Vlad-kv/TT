@@ -137,7 +137,96 @@ let infer_simp_type l_term =
 	  	end
 ;;
 
-type hm_lambda = HM_Var of string | HM_Abs of string * lambda | HM_App of lambda * lambda | HM_Let of string * lambda * lambda
+type hm_lambda = HM_Var of string | HM_Abs of string * hm_lambda | HM_App of hm_lambda * hm_lambda | HM_Let of string * hm_lambda * hm_lambda
 type hm_type = HM_Elem of string | HM_Arrow of hm_type * hm_type | HM_ForAll of string * hm_type
 
-let algorithm_w hm_term = failwith "Not implemented";;
+let string_of_var var = 
+	if ((snd var) = 0) then
+		(Char.escaped  (fst var))
+	else
+		(Char.escaped  (fst var)) ^ (string_of_int (snd var))
+;;
+let get_next_var var = 
+	if ((fst var) < 'z') then
+		(Pervasives.char_of_int ((Pervasives.int_of_char (fst var)) + 1), (snd var))
+	else
+		('a', (snd var) + 1)
+;;
+let rec get_next_not_used_var var used_vars =
+	let new_var = get_next_var var in
+	if (StrSet.mem (string_of_var new_var) used_vars) then
+		get_next_not_used_var new_var used_vars
+	else
+		new_var
+;;
+(* Применяет подстановку substitution к свободным переменным типа hm_type. *)
+let substitute hm_type substitution =
+	let rec lok_subst hm_type substitution used_vars =
+		match hm_type with
+		  | HM_Elem(str) ->
+		  		if ((not(StrSet.mem str used_vars)) && (StrMap.mem str substitution)) then
+		  			StrMap.find str substitution
+		  		else
+		  			HM_Elem(str)
+		  | HM_Arrow(type_1, type_2) ->
+		  		HM_Arrow(lok_subst type_1 substitution used_vars, lok_subst type_2 substitution used_vars)
+		  | HM_ForAll(str, type_1) ->
+		  		HM_ForAll(str, lok_subst type_1 substitution (StrSet.add str used_vars))
+	in
+	lok_subst hm_type substitution StrSet.empty
+;;
+(* Делает композицию данных подстановок - new_subst, такую что 
+   (substitute (substitute hm_type subst_2) subst_1) = (substitute hm_type new_subst)
+   для любого hm_type. *)
+let make_composition_of_substitutions subst_1 subst_2 =
+	let convert hm_type = substitute hm_type subst_1 in
+	let upd_subst_2 = StrMap.map convert subst_2 in
+	let merge key val_1 val_2 = 
+		match (val_1, val_2) with
+		  | (Some type_1, Some type_2) -> val_2
+		  | (None, Some type_2) -> val_2
+		  | (Some type_1, None) -> val_1
+		  | (None, None) -> None
+	in
+	StrMap.merge merge subst_1 upd_subst_2
+;;
+(* Преобразует безкванторный hm_type в algebraic_term. *)
+let rec algebraic_term_of_hm_type hm_type =
+	match hm_type with
+	  | HM_Elem(str) -> Var(str)
+	  | HM_Arrow(type_1, type_2) -> Fun("", [algebraic_term_of_hm_type type_1; algebraic_term_of_hm_type type_2])
+	  | HM_ForAll(var, type_1) -> failwith "hm_type contains quantifier - conversion impossible"
+;;
+(* Возвращает: (substitution, hm_type, new_next_var) *)
+let lok_algoritm_w context hm_term next_var used_vars =
+	match hm_term with
+	  | HM_Var(var) ->
+	  		if (StrMap.mem var context) then
+	  			(* Возвращает: (new_display, new_next_var, new_hm_type) - new_hm_type - тот же тип, но без поверхностных кванторов. *)
+	  			let rec get_map_for_renaming hm_type next_var = 
+	  				match hm_type with
+	  				  | HM_ForAll(str, type_1) ->
+	  				  		let new_var = get_next_not_used_var next_var used_vars in
+	  				  		let res = get_map_for_renaming type_1 new_var in
+	  				  		match res with (new_display, new_next_var, new_hm_type) ->
+	  				  			(StrMap.add str (HM_Elem(string_of_var new_var)) new_display, new_next_var, new_hm_type)
+	  				  | _ ->
+	  				  		(StrMap.empty, next_var, hm_type)
+	  			in
+	  			let var_type = StrMap.find var context in
+	  			match (get_map_for_renaming var_type next_var) with
+	  				(new_display, new_next_var, new_hm_type) ->
+	  					Some (StrMap.empty, substitute new_hm_type new_display, new_next_var)
+	  		else
+	  			failwith ("Unbound value " ^ var)
+	  | HM_Abs(var, expr_1) -> failwith "Not implemented"
+	  | HM_App(expr_1, expr_2) -> failwith "Not implemented"
+	  | HM_Let(var, expr_1, expr_2) -> failwith "Not implemented"
+;;
+
+let algorithm_w hm_term =
+	match (lok_algoritm_w StrMap.empty hm_term ('a', 0) StrSet.empty) with
+	  | Some (substitution, hm_type, new_next_var) ->
+	  		Some ((StrMap.bindings substitution), hm_type)
+	  | None -> None
+;;
