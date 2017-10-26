@@ -20,6 +20,9 @@ val string_of_hm_type : hm_type -> string
 val string_of_hm_lambda : hm_lambda -> string
 
 val hm_lambda_of_string : string -> hm_lambda
+val hm_type_of_string : string -> hm_type
+
 val algebraic_term_of_hm_type : hm_type -> algebraic_term
 
 val algorithm_w : hm_lambda -> ((string * hm_type) list * hm_type) option
+val algorithm_w_with_context : hm_lambda -> (string * hm_type) list -> ((string * hm_type) list * hm_type) option

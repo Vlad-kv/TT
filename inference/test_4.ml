@@ -125,6 +125,16 @@ check_hm_lambda_of_string "let x = a let x = \\m.m in (qwert) f_1 f_2 in x (\\m.
 
 (*-------*)
 
+let check_hm_type_of_string str =
+	print_string ("original : " ^ str ^ "\n");
+	print_string ("after_tranform : " ^ (string_of_hm_type (hm_type_of_string str)) ^ "\n\n")
+;;
+check_hm_type_of_string "x";;
+check_hm_type_of_string "a -> b -> a";;
+check_hm_type_of_string "@a.@b.(a -> (b)) -> a";;
+
+(*-------*)
+
 let check_algorithm_w hm_lambda expected_result =
 	print_string ("hm_lambda : " ^ (string_of_hm_lambda hm_lambda) ^ "\n");
 	let res = algorithm_w  hm_lambda in
@@ -152,9 +162,90 @@ let check_algorithm_w hm_lambda expected_result =
 let check_algorithm_w_of_str hm_lambda expected_result =
 	check_algorithm_w (hm_lambda_of_string hm_lambda) expected_result
 ;;
-
+(* 
 check_algorithm_w_of_str "\\x.x" true;;
 check_algorithm_w_of_str "\\x.\\y.x y" true;;
 check_algorithm_w_of_str "\\x.x x" false;;
 
 check_algorithm_w_of_str (inc ^ two) true;;
+
+check_algorithm_w_of_str
+	"let inc = \\n.\\f.\\x.(n f)(f x) in
+	 let x = \\f.\\x.f(f(f x)) in
+	 inc x"
+true;; *)
+
+check_algorithm_w_of_str (xor ^ f ^ f) true;;
+
+
+check_algorithm_w_of_str "(((\\a.(\\b.((a ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) b)) b))) (\\a.\\b.b)) (\\a.\\b.b))" true;; (* ((e -> (f -> f)) -> ((h -> (i -> h)) -> (h -> (i -> h)))) *)
+
+check_algorithm_w_of_str "((     (\\b.( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) b)) b))   (\\a.\\b.b))" true;; (*((f -> (g -> g)) -> ((i -> (j -> i)) -> (i -> (j -> i))))*)
+
+check_algorithm_w_of_str "((    ( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) (\\a.\\b.b) )) (\\a.\\b.b) ))" true;; (* (o -> (p -> p))  *)
+
+
+(\a.((a (\a.(\b.b))) (\a.(\b.a)))) : (((e -> (f -> f)) -> ((h -> (i -> h)) -> j)) -> j)
+
+(xor ^ f ^ f)
+
+((     (\\a.(\\b.((a ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) b)) b)))  (\\a.\\b.b)) (\\a.\\b.b))
+((     (\\b.( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) b)) b))   (\\a.\\b.b))
+
+( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) (\\a.\\b.b) )) (\\a.\\b.b)
+
+
+
+let check_algorithm_w_with_context hm_lambda context expected_result =
+	print_string ("hm_lambda : " ^ (string_of_hm_lambda hm_lambda) ^ "\n");
+	print_string ("context :\n");
+	let printer pair =
+		print_string ("  " ^ (fst pair) ^ " : " ^ (string_of_hm_type (snd pair)) ^ "\n")
+	in
+	List.iter printer context;
+	let res = algorithm_w_with_context hm_lambda context in
+	begin
+		match res with
+		  | Some pair ->
+		  	begin
+		  		print_string "Solution:\n";
+		  		let printer pair =
+		  			print_string ("  " ^ (fst pair) ^ " = " ^ (string_of_hm_type (snd pair)) ^ "\n")
+		  		in
+		  		List.iter printer (fst pair);
+		  		print_string ("main type : " ^ (string_of_hm_type (snd pair)) ^ "\n");
+		  		assert(expected_result = true)
+		  	end
+		  | None ->
+	  		begin
+	  			print_string "No solution.\n";
+	  			assert(expected_result = false)
+	  		end
+  	end;
+  	print_string "\n"
+;;
+
+let check_algorithm_w_with_context_of_str hm_lambda context expected_result =
+	let convert pair = (fst pair, hm_type_of_string (snd pair)) in
+	let context = List.map convert context in
+	check_algorithm_w_with_context (hm_lambda_of_string hm_lambda) context expected_result
+;;
+
+(* let string_of_var var = 
+	if ((snd var) = 0) then
+		(Char.escaped  (fst var))
+	else
+		(Char.escaped  (fst var)) ^ (string_of_int (snd var))
+;; *)
+
+(* check_algorithm_w_with_context_of_str "
+	
+"
+[
+	("fst", "(((c -> (d -> c)) -> e) -> e)");
+	("snd", "(((c -> (d -> d)) -> e) -> e)");
+	("is_ints_equal", "@a.int -> int -> a -> a -> a")
+]
+true
+;;
+ *)

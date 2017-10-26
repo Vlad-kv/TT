@@ -144,7 +144,7 @@ let rec string_of_hm_type hm_type =
 	match hm_type with
 	  | HM_Elem(var) -> var
 	  | HM_Arrow(type_1, type_2) -> ("(" ^ (string_of_hm_type type_1) ^ " -> " ^ (string_of_hm_type type_2) ^ ")")
-	  | HM_ForAll(var, type_1) -> ("(\\/" ^ var ^ "." ^ (string_of_hm_type type_1) ^ ")")
+	  | HM_ForAll(var, type_1) -> ("(@" ^ var ^ "." ^ (string_of_hm_type type_1) ^ ")")
 ;;
 
 let rec string_of_hm_lambda hm_lambda = 
@@ -227,8 +227,38 @@ let rec hm_type_of_algebraic_term algebraic_term =
 	  			failwith ("unknown name of function : " ^ var)
 	  | Var(var) -> HM_Elem(var)
 ;;
+(* Возвращает: set несвязанных переменных. *)
+let get_free_vars hm_type =
+	let rec lok_get_free_vars hm_type used_vars free_vars =
+		match hm_type with
+		  | HM_Elem(str) ->
+		  		if (not(StrSet.mem str used_vars)) then
+		  			StrSet.add str free_vars
+		  		else
+		  			free_vars
+		  | HM_Arrow(type_1, type_2) ->
+		  		let free_vars = lok_get_free_vars type_1 used_vars free_vars in
+		  		lok_get_free_vars type_2 used_vars free_vars
+		  | HM_ForAll(str, type_1) ->
+		  		lok_get_free_vars type_1 (StrSet.add str used_vars) free_vars
+	in
+	lok_get_free_vars hm_type StrSet.empty StrSet.empty
+;;
+(* Возвращает: set из всех свободных типовых переменных контекста. *)
+let get_free_vars_from_context context =
+	let rec lok_get l =
+		if (l = []) then
+			StrSet.empty
+		else
+			let res = lok_get (List.tl l) in
+			StrSet.union (get_free_vars (snd (List.hd l))) res
+	in
+	lok_get (StrMap.bindings context)
+;;
 (* Возвращает: (substitution, hm_type, new_next_var) *)
 let rec lok_algoritm_w context hm_term next_var used_vars =
+	let res =
+	begin
 	match hm_term with
 	  | HM_Var(var) ->
 	  		if (StrMap.mem var context) then
@@ -314,7 +344,59 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	  		    	  	end
 	  		    end
 	  	end
-	  | HM_Let(var, expr_1, expr_2) -> failwith "Not implemented"
+	  | HM_Let(var, expr_1, expr_2) -> 
+	  	begin
+	  		(* Замыкает все свободные переменные hm_type за исключением тех, которые свободны в context-е. *)
+	  		let closure hm_type context =
+	  			let set_to_closure = StrSet.inter (get_free_vars hm_type) (get_free_vars_from_context context) in
+	  			let rec apply_closure l =
+	  				if (l = []) then
+	  					hm_type
+	  				else
+	  					let res = apply_closure (List.tl l) in
+	  					HM_ForAll(List.hd l, res)
+	  			in
+	  			apply_closure (StrSet.elements set_to_closure)
+	  		in
+	  		let res_1 = lok_algoritm_w context expr_1 next_var used_vars in
+	  		match res_1 with
+	  		  | None -> None
+	  		  | Some (subst_1, type_1, next_var) ->
+		  		begin
+		  			let convert hm_type = substitute hm_type subst_1 in
+		  			let upd_context = StrMap.map convert (StrMap.remove var context) in
+		  			let upd_context = StrMap.add var (closure type_1 upd_context) upd_context in
+		  			let res_2 = lok_algoritm_w upd_context expr_2 next_var used_vars in
+		  			match res_2 with
+		  			  | None -> None
+		  			  | Some (subst_2, type_2, next_var) ->
+			  				Some (make_composition_of_substitutions subst_2 subst_1, type_2, next_var)
+		  		end
+	  	end
+	end
+	in
+	let print_state context hm_term res =
+		let printer var var_type =
+			print_string ("  " ^ var ^ " : " ^ (string_of_hm_type var_type) ^ "\n")
+		in
+		print_string "\n----------\n";
+		print_string "context :\n";
+		StrMap.iter printer context;
+		print_string ("hm_term : " ^ (string_of_hm_lambda hm_term) ^ "\n");
+		match res with
+		  | None -> print_string "No solution.\n"
+		  | Some (substitution, hm_type, new_next_var) ->
+		  	begin
+		  		print_string "Solution:\n";
+		  		let printer var var_type =
+		  			print_string ("  " ^ var ^ " = " ^ (string_of_hm_type var_type) ^ "\n")
+		  		in
+		  		StrMap.iter printer substitution;
+		  		print_string ("main type : " ^ (string_of_hm_type hm_type) ^ "\n");
+		  	end
+	in
+	print_state context hm_term res;
+	res
 ;;
 
 let algorithm_w hm_term =
@@ -324,52 +406,54 @@ let algorithm_w hm_term =
 	  | None -> None
 ;;
 
-let hm_lambda_of_string str = 
-	let rec get_tokens str pos token = 
-		let is_whitespace c =
-			((c = ' ') || (c = '\012') || (c = '\n') || (c = '\r') || (c = '\t'))
-		in
-		let is_main c =
-			((c = '(') || (c = ')') || (c = '.') || (c = '\\') || (c = '='))
-		in
-		if (pos = (String.length str)) then
-			if (token <> "") then
-				[token]
-			else
-				[]
+(* Возвращает: list из token-ов. *)
+let rec get_tokens str pos token = 
+	let is_whitespace c =
+		((c = ' ') || (c = '\012') || (c = '\n') || (c = '\r') || (c = '\t'))
+	in
+	let is_main_sumbol c =
+		((c = '(') || (c = ')') || (c = '.') || (c = '\\') || (c = '=') || (c = '@') || (c = '-') || (c = '>'))
+	in
+	if (pos = (String.length str)) then
+		if (token <> "") then
+			[token]
 		else
-		begin
-			let c = String.get str pos in
-			if (is_whitespace c) then
-				let res = get_tokens str (pos + 1) "" in
+			[]
+	else
+	begin
+		let c = String.get str pos in
+		if (is_whitespace c) then
+			let res = get_tokens str (pos + 1) "" in
+			if (token <> "") then
+				token :: res
+			else
+				res
+		else
+			if (is_main_sumbol c) then
+				let res = (String.make 1 c) :: (get_tokens str (pos + 1) "") in
 				if (token <> "") then
 					token :: res
 				else
 					res
 			else
-				if (is_main c) then
-					let res = (String.make 1 c) :: (get_tokens str (pos + 1) "") in
-					if (token <> "") then
-						token :: res
-					else
-						res
-				else
-					get_tokens str (pos + 1) (String.concat "" [token; String.make 1 c])
-		end
-	in
-	(* Возвращает list без первого, если он (первый) совпал.*)
-	let next_token_is expected l =
-		if (l = []) then
-			failwith ("Error - no tokens, expected \"" ^ expected ^ "\"")
+				get_tokens str (pos + 1) (String.concat "" [token; String.make 1 c])
+	end
+;;
+(* Возвращает list без первого, если он (первый) совпал.*)
+let next_token_is expected l =
+	if (l = []) then
+		failwith ("Error - no tokens, expected \"" ^ expected ^ "\"")
+	else
+		let first = List.hd l in
+		if (first = expected) then
+			List.tl l
 		else
-			let first = List.hd l in
-			if (first = expected) then
-				List.tl l
-			else
-				failwith ("Unexpected token - expected \"" ^ expected ^ "\", found \"" ^ first ^ "\"")
-	in
+			failwith ("Unexpected token - expected \"" ^ expected ^ "\", found \"" ^ first ^ "\"")
+;;
+
+let hm_lambda_of_string str = 
 	let is_valid_name name =
-		((name <> "(") && (name <> ")") && (name <> ".") && (name <> "\\") && (name <> "=") && (name <> "let") && (name <> "in"))
+		((name <> "(") && (name <> ")") && (name <> ".") && (name <> "\\") && (name <> "=") && (name <> "let") && (name <> "in") && (name <> "@"))
 	in
 	(* Возвращает: (lambda, new_list). *)
 	let rec parse prev_expr l =
@@ -430,4 +514,70 @@ let hm_lambda_of_string str =
 		failwith "Error!"
 	else
 		fst res
+;;
+
+let hm_type_of_string str = 
+	let is_valid_name name =
+		((name <> "(") && (name <> ")") && (name <> ".") && (name <> "\\") && (name <> "=") && (name <> "@") && (name <> "-")  && (name <> ">"))
+	in
+	(* Возвращает: (calc_type, new_list). *)
+	let rec parse l =
+		let try_parse_next prev_expr l =
+			if (l = []) then
+				(prev_expr, l)
+			else
+				match l with
+				  | "-" :: ">" :: l ->
+				  		let res = parse l in
+  						(HM_Arrow(prev_expr, fst res), snd res)
+				  | _ -> (prev_expr, l)
+		in
+		match l with
+		  | "(" :: tail ->
+		  	begin
+		  		let res = parse tail in
+		  		let res_type = fst res in
+		  		let new_list = next_token_is ")" (snd res) in
+		  		try_parse_next res_type new_list
+		  	end
+		  | "@" :: var :: "." :: l ->
+  		  	begin
+  		  		if (is_valid_name var) then
+  		  			match (parse l) with
+  		  				(res_type, new_list) ->
+  		  					(HM_ForAll(var, res_type), new_list) 
+  		  		else
+  		  			failwith ("Error - not valid name \"" ^ var ^ "\"")
+  		  	end
+		  | var :: l ->
+		  		if (not (is_valid_name var)) then
+		  			failwith ("Error - not valid name \"" ^ var ^ "\"")
+		  		else
+		  			let res = HM_Elem(var) in
+		  			try_parse_next res l
+		  | _ -> failwith "Error - unexpected condition"
+	in
+	let res = parse (get_tokens str 0 "") in
+	if ((snd res) <> []) then
+		failwith "Error!"
+	else
+		fst res
+;;
+
+(* Алгоритм W, где можно указать внешний контекст. *)
+let algorithm_w_with_context hm_term context =
+	let rec map_of_list l =
+		if (l = []) then
+			StrMap.empty
+		else
+			let res = map_of_list (List.tl l) in
+			match List.hd l with
+			(var, var_type) ->
+				StrMap.add var var_type res
+	in
+	let context = (map_of_list context) in
+	match lok_algoritm_w context hm_term ('z', -1) (get_free_vars_from_context context) with
+	  | Some (substitution, hm_type, new_next_var) ->
+	  		Some ((StrMap.bindings substitution), hm_type)
+	  | None -> None
 ;;
