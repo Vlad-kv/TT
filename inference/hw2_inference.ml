@@ -140,6 +140,21 @@ let infer_simp_type l_term =
 type hm_lambda = HM_Var of string | HM_Abs of string * hm_lambda | HM_App of hm_lambda * hm_lambda | HM_Let of string * hm_lambda * hm_lambda
 type hm_type = HM_Elem of string | HM_Arrow of hm_type * hm_type | HM_ForAll of string * hm_type
 
+let rec string_of_hm_type hm_type =
+	match hm_type with
+	  | HM_Elem(var) -> var
+	  | HM_Arrow(type_1, type_2) -> ("(" ^ (string_of_hm_type type_1) ^ " -> " ^ (string_of_hm_type type_2) ^ ")")
+	  | HM_ForAll(var, type_1) -> ("(\\/" ^ var ^ "." ^ (string_of_hm_type type_1) ^ ")")
+;;
+
+let rec string_of_hm_lambda hm_lambda = 
+	match hm_lambda with
+	  | HM_Var(var) -> var
+	  | HM_Abs(var, lambda_1) -> ("(\\" ^ var ^ "." ^ (string_of_hm_lambda lambda_1) ^ ")")
+	  | HM_App(lambda_1, lambda_2) -> ("(" ^ (string_of_hm_lambda lambda_1) ^ " " ^ (string_of_hm_lambda lambda_2) ^ ")")
+	  | HM_Let(var, lambda_1, lambda_2) -> ("(let " ^ var ^ " = " ^ (string_of_hm_lambda lambda_1) ^ " in " ^ (string_of_hm_lambda lambda_2) ^ ")")
+;;
+
 let string_of_var var = 
 	if ((snd var) = 0) then
 		(Char.escaped  (fst var))
@@ -197,8 +212,23 @@ let rec algebraic_term_of_hm_type hm_type =
 	  | HM_Arrow(type_1, type_2) -> Fun("", [algebraic_term_of_hm_type type_1; algebraic_term_of_hm_type type_2])
 	  | HM_ForAll(var, type_1) -> failwith "hm_type contains quantifier - conversion impossible"
 ;;
+(* Преобразует algebraic_term в hm_type, если все функциональные переменные равны "" и количество аргументов у каждой функции = 2. *)
+let rec hm_type_of_algebraic_term algebraic_term =
+	match algebraic_term with
+	  | Fun(var, l) ->
+	  		if (var = "") then
+	  			if ((List.length l) = 2) then
+	  				let t_1 = (List.nth l 0) in
+	  				let t_2 = (List.nth l 1) in
+	  				HM_Arrow(hm_type_of_algebraic_term t_1, hm_type_of_algebraic_term t_2)
+	  			else
+	  				failwith "wrong number of arguments (in hm_type_of_algebraic_term)"
+	  		else
+	  			failwith ("unknown name of function : " ^ var)
+	  | Var(var) -> HM_Elem(var)
+;;
 (* Возвращает: (substitution, hm_type, new_next_var) *)
-let lok_algoritm_w context hm_term next_var used_vars =
+let rec lok_algoritm_w context hm_term next_var used_vars =
 	match hm_term with
 	  | HM_Var(var) ->
 	  		if (StrMap.mem var context) then
@@ -206,10 +236,12 @@ let lok_algoritm_w context hm_term next_var used_vars =
 	  			let rec get_map_for_renaming hm_type next_var = 
 	  				match hm_type with
 	  				  | HM_ForAll(str, type_1) ->
+	  				  	begin
 	  				  		let new_var = get_next_not_used_var next_var used_vars in
 	  				  		let res = get_map_for_renaming type_1 new_var in
 	  				  		match res with (new_display, new_next_var, new_hm_type) ->
 	  				  			(StrMap.add str (HM_Elem(string_of_var new_var)) new_display, new_next_var, new_hm_type)
+	  				  	end
 	  				  | _ ->
 	  				  		(StrMap.empty, next_var, hm_type)
 	  			in
@@ -219,8 +251,69 @@ let lok_algoritm_w context hm_term next_var used_vars =
 	  					Some (StrMap.empty, substitute new_hm_type new_display, new_next_var)
 	  		else
 	  			failwith ("Unbound value " ^ var)
-	  | HM_Abs(var, expr_1) -> failwith "Not implemented"
-	  | HM_App(expr_1, expr_2) -> failwith "Not implemented"
+	  | HM_Abs(var, expr_1) ->
+	 	begin
+	  		let new_var = get_next_not_used_var next_var used_vars in
+	  		let lok_context = StrMap.add var (HM_Elem (string_of_var new_var)) context in
+	  		let res = lok_algoritm_w lok_context expr_1 new_var used_vars in
+	  		match res with
+	  		  | Some (substitution, hm_type, new_next_var) ->
+	  		  	let str_new_var = string_of_var new_var in
+	  		  	let new_type = 
+	  		  		if (StrMap.mem str_new_var substitution) then
+	  		  			StrMap.find str_new_var substitution
+	  		  		else
+	  		  			HM_Elem(str_new_var)
+	  		  	in
+	  		  	Some (substitution, HM_Arrow(new_type, hm_type), new_next_var)
+	  		  | None -> None
+	  	end
+	  | HM_App(expr_1, expr_2) ->
+	  	begin
+	  		let res = lok_algoritm_w context expr_1 next_var used_vars in
+	  		match res with
+	  		  | None -> None
+	  		  | Some (subst_1, type_1, next_var) ->
+	  		    begin
+	  		    	let convert hm_type = substitute hm_type subst_1 in
+	  		    	let upd_context = StrMap.map convert context in
+	  		    	let res = lok_algoritm_w upd_context expr_2 next_var used_vars in
+	  		    	match res with
+	  		    	  | None -> None
+	  		    	  | Some (subst_2, type_2, next_var) ->
+	  		    	  	begin
+	  		    	  		let new_var = get_next_not_used_var next_var used_vars in
+	  		    	  		let str_new_var = string_of_var new_var in
+	  		    	  		let type_1 = substitute type_1 subst_2 in
+	  		    	  		let a_term_1 = algebraic_term_of_hm_type type_1 in
+	  		    	  		let a_term_2 = algebraic_term_of_hm_type (HM_Arrow(type_2, (HM_Elem str_new_var))) in
+	  		    	  		let res = solve_system [(a_term_1, a_term_2)] in
+	  		    	  		match res with
+	  		    	  		  | None -> None
+	  		    	  		  | Some l ->
+	  		    	  		  	begin
+	  		    	  		  		let rec create_subst l =
+	  		    	  		  			if (l = []) then
+	  		    	  		  				StrMap.empty
+	  		    	  		  			else
+	  		    	  		  				let map = create_subst (List.tl l) in
+	  		    	  		  				let var = fst (List.hd l) in
+	  		    	  		  				let var_type = hm_type_of_algebraic_term (snd (List.hd l)) in
+	  		    	  		  				StrMap.add var var_type map
+	  		    	  		  		in
+	  		    	  		  		let subst_3 = create_subst l in
+	  		    	  		  		let res_subst = make_composition_of_substitutions subst_3 (make_composition_of_substitutions subst_2 subst_1) in
+	  		    	  		  		let res_type =
+	  		    	  		  			if (StrMap.mem str_new_var res_subst) then
+	  		    	  		  				StrMap.find str_new_var res_subst
+	  		    	  		  			else
+	  		    	  		  				HM_Elem(str_new_var)
+	  		    	  		  		in
+	  		    	  		  		Some (res_subst, res_type, new_var)
+	  		    	  		  	end
+	  		    	  	end
+	  		    end
+	  	end
 	  | HM_Let(var, expr_1, expr_2) -> failwith "Not implemented"
 ;;
 
@@ -229,4 +322,112 @@ let algorithm_w hm_term =
 	  | Some (substitution, hm_type, new_next_var) ->
 	  		Some ((StrMap.bindings substitution), hm_type)
 	  | None -> None
+;;
+
+let hm_lambda_of_string str = 
+	let rec get_tokens str pos token = 
+		let is_whitespace c =
+			((c = ' ') || (c = '\012') || (c = '\n') || (c = '\r') || (c = '\t'))
+		in
+		let is_main c =
+			((c = '(') || (c = ')') || (c = '.') || (c = '\\') || (c = '='))
+		in
+		if (pos = (String.length str)) then
+			if (token <> "") then
+				[token]
+			else
+				[]
+		else
+		begin
+			let c = String.get str pos in
+			if (is_whitespace c) then
+				let res = get_tokens str (pos + 1) "" in
+				if (token <> "") then
+					token :: res
+				else
+					res
+			else
+				if (is_main c) then
+					let res = (String.make 1 c) :: (get_tokens str (pos + 1) "") in
+					if (token <> "") then
+						token :: res
+					else
+						res
+				else
+					get_tokens str (pos + 1) (String.concat "" [token; String.make 1 c])
+		end
+	in
+	(* Возвращает list без первого, если он (первый) совпал.*)
+	let next_token_is expected l =
+		if (l = []) then
+			failwith ("Error - no tokens, expected \"" ^ expected ^ "\"")
+		else
+			let first = List.hd l in
+			if (first = expected) then
+				List.tl l
+			else
+				failwith ("Unexpected token - expected \"" ^ expected ^ "\", found \"" ^ first ^ "\"")
+	in
+	let is_valid_name name =
+		((name <> "(") && (name <> ")") && (name <> ".") && (name <> "\\") && (name <> "=") && (name <> "let") && (name <> "in"))
+	in
+	(* Возвращает: (lambda, new_list). *)
+	let rec parse prev_expr l =
+		let try_parse_next prev_expr l =
+			if (l = []) then
+				(prev_expr, l)
+			else
+				let f = List.hd l in
+				if ((f = "(") || (f = "\\") || (f = "let") || (is_valid_name f)) then
+  					parse (Some(prev_expr)) l
+  				else
+  					(prev_expr, l)
+		in
+		let merge prev_expr new_expr =
+			match prev_expr with
+			  | None -> new_expr
+			  | Some expr -> HM_App(expr, new_expr)
+		in
+		match l with
+		  | "(" :: tail ->
+		  	begin
+		  		let res = parse None tail in
+		  		let res_lambda = merge prev_expr (fst res) in
+		  		let new_list = next_token_is ")" (snd res) in
+		  		try_parse_next res_lambda new_list
+		  	end
+		  | "\\" :: var :: "." :: l ->
+  		  	begin
+  		  		if (is_valid_name var) then
+  		  			match (parse None l) with
+  		  				(lambda, new_list) ->
+  		  					let res = HM_Abs(var, lambda) in
+  		  					(merge prev_expr res, new_list)
+  		  		else
+  		  			failwith ("Error - not valid name \"" ^ var ^ "\"")
+  		  	end
+		  | "let" :: var :: "=" :: l ->
+		  	begin
+		  		if (not (is_valid_name var)) then
+		  			failwith ("Error - not valid name \"" ^ var ^ "\"")
+		  		else
+		  		let res_1 = parse None l in
+		  		let l = next_token_is "in" (snd res_1) in
+		  		let res_2 = parse None l in
+		  		let res = HM_Let(var, fst res_1, fst res_2) in
+		  		(merge prev_expr res, snd res_2)
+		  	end
+		  | var :: l ->
+		  		if (not (is_valid_name var)) then
+		  			failwith ("Error - not valid name \"" ^ var ^ "\"")
+		  		else
+		  			let res = merge prev_expr (HM_Var(var)) in
+		  			try_parse_next res l
+		  | _ -> failwith "Error - unexpected condition"
+	in
+	let res = parse None (get_tokens str 0 "") in
+	if ((snd res) <> []) then
+		failwith "Error!"
+	else
+		fst res
 ;;

@@ -109,3 +109,52 @@ check_composition
 		("a", HM_Elem("b"));
 	]
 	(HM_Arrow(HM_Elem("c"), HM_Arrow(HM_Elem("a"), HM_Elem("z"))));;
+
+(*-------*)
+
+let check_hm_lambda_of_string str =
+	print_string ("original : " ^ str ^ "\n");
+	print_string ("after_tranform : " ^ (string_of_hm_lambda (hm_lambda_of_string str)) ^ "\n\n")
+;;
+check_hm_lambda_of_string "x";;
+check_hm_lambda_of_string "q w e r t";;
+check_hm_lambda_of_string "q (w e) (r ((t)))";;
+check_hm_lambda_of_string "(\\q.\\v.q (w e) \\t.(r ((t))) z) q \\e.w e";;
+check_hm_lambda_of_string "let x = \\c.c c in x x w";;
+check_hm_lambda_of_string "let x = a let x = \\m.m in (qwert) f_1 f_2 in x (\\m.a v_4) x";;
+
+(*-------*)
+
+let check_algorithm_w hm_lambda expected_result =
+	print_string ("hm_lambda : " ^ (string_of_hm_lambda hm_lambda) ^ "\n");
+	let res = algorithm_w  hm_lambda in
+	begin
+		match res with
+		  | Some pair ->
+		  	begin
+		  		print_string "Solution:\n";
+		  		let printer pair =
+		  			print_string ("  " ^ (fst pair) ^ " = " ^ (string_of_hm_type (snd pair)) ^ "\n")
+		  		in
+		  		List.iter printer (fst pair);
+		  		print_string ("main type : " ^ (string_of_hm_type (snd pair)) ^ "\n");
+		  		assert(expected_result = true)
+		  	end
+		  | None ->
+	  		begin
+	  			print_string "No solution.\n";
+	  			assert(expected_result = false)
+	  		end
+  	end;
+  	print_string "\n"
+;;
+
+let check_algorithm_w_of_str hm_lambda expected_result =
+	check_algorithm_w (hm_lambda_of_string hm_lambda) expected_result
+;;
+
+check_algorithm_w_of_str "\\x.x" true;;
+check_algorithm_w_of_str "\\x.\\y.x y" true;;
+check_algorithm_w_of_str "\\x.x x" false;;
+
+check_algorithm_w_of_str (inc ^ two) true;;

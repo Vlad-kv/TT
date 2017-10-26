@@ -16,4 +16,10 @@ type hm_type = HM_Elem of string | HM_Arrow of hm_type * hm_type | HM_ForAll of 
 val substitute : hm_type -> hm_type Map.Make(String).t -> hm_type
 val make_composition_of_substitutions : hm_type Map.Make(String).t -> hm_type Map.Make(String).t -> hm_type Map.Make(String).t
 
+val string_of_hm_type : hm_type -> string
+val string_of_hm_lambda : hm_lambda -> string
+
+val hm_lambda_of_string : string -> hm_lambda
+val algebraic_term_of_hm_type : hm_type -> algebraic_term
+
 val algorithm_w : hm_lambda -> ((string * hm_type) list * hm_type) option
