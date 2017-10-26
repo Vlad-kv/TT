@@ -184,7 +184,7 @@ check_algorithm_w_of_str "((     (\\b.( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.
 
 check_algorithm_w_of_str "((    ( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) (\\a.\\b.b) )) (\\a.\\b.b) ))" true;; (* (o -> (p -> p))  *)
 
-
+(* 
 (\a.((a (\a.(\b.b))) (\a.(\b.a)))) : (((e -> (f -> f)) -> ((h -> (i -> h)) -> j)) -> j)
 
 (xor ^ f ^ f)
@@ -193,7 +193,7 @@ check_algorithm_w_of_str "((    ( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a)
 ((     (\\b.( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) b)) b))   (\\a.\\b.b))
 
 ( (\\a.\\b.b) ((\\a.((a (\\a.\\b.b)) (\\a.\\b.a))) (\\a.\\b.b) )) (\\a.\\b.b)
-
+ *)
 
 
 let check_algorithm_w_with_context hm_lambda context expected_result =
