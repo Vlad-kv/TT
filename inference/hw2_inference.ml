@@ -143,16 +143,34 @@ type hm_type = HM_Elem of string | HM_Arrow of hm_type * hm_type | HM_ForAll of 
 let rec string_of_hm_type hm_type =
 	match hm_type with
 	  | HM_Elem(var) -> var
-	  | HM_Arrow(type_1, type_2) -> ("(" ^ (string_of_hm_type type_1) ^ " -> " ^ (string_of_hm_type type_2) ^ ")")
-	  | HM_ForAll(var, type_1) -> ("(@" ^ var ^ "." ^ (string_of_hm_type type_1) ^ ")")
+	  | HM_Arrow(type_1, type_2) ->
+	  		let first =
+	  			match type_1 with
+	  			  | HM_Elem(var) -> var
+	  			  | _ -> ("(" ^ (string_of_hm_type type_1) ^ ")")
+	  		in
+		  (first ^ " -> " ^ (string_of_hm_type type_2))
+	  | HM_ForAll(var, type_1) -> ("@" ^ var ^ "." ^ (string_of_hm_type type_1))
 ;;
 
 let rec string_of_hm_lambda hm_lambda = 
 	match hm_lambda with
 	  | HM_Var(var) -> var
-	  | HM_Abs(var, lambda_1) -> ("(\\" ^ var ^ "." ^ (string_of_hm_lambda lambda_1) ^ ")")
-	  | HM_App(lambda_1, lambda_2) -> ("(" ^ (string_of_hm_lambda lambda_1) ^ " " ^ (string_of_hm_lambda lambda_2) ^ ")")
-	  | HM_Let(var, lambda_1, lambda_2) -> ("(let " ^ var ^ " = " ^ (string_of_hm_lambda lambda_1) ^ " in " ^ (string_of_hm_lambda lambda_2) ^ ")")
+	  | HM_Abs(var, lambda_1) -> ("\\" ^ var ^ "." ^ (string_of_hm_lambda lambda_1))
+	  | HM_App(lambda_1, lambda_2) ->
+	  		let first =
+	  			let res = string_of_hm_lambda lambda_1 in
+	  			match lambda_1 with
+	  			  | HM_Abs(var, lambda_1) -> ("(" ^ res ^ ")")
+	  			  | _ -> res
+	  		in
+	  		let second = 
+		  		match lambda_2 with
+		  		  | HM_Var(var) -> var
+		  		  | _ -> "(" ^ (string_of_hm_lambda lambda_2) ^ ")"
+	  		in
+	  		(first ^ " " ^ second)
+	  | HM_Let(var, lambda_1, lambda_2) -> ("let " ^ var ^ " = " ^ (string_of_hm_lambda lambda_1) ^ " in " ^ (string_of_hm_lambda lambda_2))
 ;;
 
 let string_of_var var = 
@@ -256,7 +274,7 @@ let get_free_vars_from_context context =
 	lok_get (StrMap.bindings context)
 ;;
 (* Возвращает: (substitution, hm_type, new_next_var) *)
-let rec lok_algoritm_w context hm_term next_var used_vars =
+let rec lok_algoritm_w context hm_term next_var used_vars comparator =
 	let res =
 	begin
 	match hm_term with
@@ -285,7 +303,7 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	 	begin
 	  		let new_var = get_next_not_used_var next_var used_vars in
 	  		let lok_context = StrMap.add var (HM_Elem (string_of_var new_var)) context in
-	  		let res = lok_algoritm_w lok_context expr_1 new_var used_vars in
+	  		let res = lok_algoritm_w lok_context expr_1 new_var used_vars comparator in
 	  		match res with
 	  		  | Some (substitution, hm_type, new_next_var) ->
 	  		  	let str_new_var = string_of_var new_var in
@@ -300,14 +318,14 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	  	end
 	  | HM_App(expr_1, expr_2) ->
 	  	begin
-	  		let res = lok_algoritm_w context expr_1 next_var used_vars in
+	  		let res = lok_algoritm_w context expr_1 next_var used_vars comparator in
 	  		match res with
 	  		  | None -> None
 	  		  | Some (subst_1, type_1, next_var) ->
 	  		    begin
 	  		    	let convert hm_type = substitute hm_type subst_1 in
 	  		    	let upd_context = StrMap.map convert context in
-	  		    	let res = lok_algoritm_w upd_context expr_2 next_var used_vars in
+	  		    	let res = lok_algoritm_w upd_context expr_2 next_var used_vars comparator in
 	  		    	match res with
 	  		    	  | None -> None
 	  		    	  | Some (subst_2, type_2, next_var) ->
@@ -317,7 +335,7 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	  		    	  		let type_1 = substitute type_1 subst_2 in
 	  		    	  		let a_term_1 = algebraic_term_of_hm_type type_1 in
 	  		    	  		let a_term_2 = algebraic_term_of_hm_type (HM_Arrow(type_2, (HM_Elem str_new_var))) in
-	  		    	  		let res = solve_system [(a_term_1, a_term_2)] in
+	  		    	  		let res = solve_system_with_comparator [(a_term_1, a_term_2)] comparator in
 	  		    	  		match res with
 	  		    	  		  | None -> None
 	  		    	  		  | Some l ->
@@ -348,7 +366,7 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	  	begin
 	  		(* Замыкает все свободные переменные hm_type за исключением тех, которые свободны в context-е. *)
 	  		let closure hm_type context =
-	  			let set_to_closure = StrSet.inter (get_free_vars hm_type) (get_free_vars_from_context context) in
+	  			let set_to_closure = StrSet.diff (get_free_vars hm_type) (get_free_vars_from_context context) in
 	  			let rec apply_closure l =
 	  				if (l = []) then
 	  					hm_type
@@ -358,7 +376,7 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 	  			in
 	  			apply_closure (StrSet.elements set_to_closure)
 	  		in
-	  		let res_1 = lok_algoritm_w context expr_1 next_var used_vars in
+	  		let res_1 = lok_algoritm_w context expr_1 next_var used_vars comparator in
 	  		match res_1 with
 	  		  | None -> None
 	  		  | Some (subst_1, type_1, next_var) ->
@@ -366,7 +384,7 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 		  			let convert hm_type = substitute hm_type subst_1 in
 		  			let upd_context = StrMap.map convert (StrMap.remove var context) in
 		  			let upd_context = StrMap.add var (closure type_1 upd_context) upd_context in
-		  			let res_2 = lok_algoritm_w upd_context expr_2 next_var used_vars in
+		  			let res_2 = lok_algoritm_w upd_context expr_2 next_var used_vars comparator in
 		  			match res_2 with
 		  			  | None -> None
 		  			  | Some (subst_2, type_2, next_var) ->
@@ -395,15 +413,8 @@ let rec lok_algoritm_w context hm_term next_var used_vars =
 		  		print_string ("main type : " ^ (string_of_hm_type hm_type) ^ "\n");
 		  	end
 	in
-	print_state context hm_term res;
+	(* print_state context hm_term res; *)
 	res
-;;
-
-let algorithm_w hm_term =
-	match (lok_algoritm_w StrMap.empty hm_term ('a', 0) StrSet.empty) with
-	  | Some (substitution, hm_type, new_next_var) ->
-	  		Some ((StrMap.bindings substitution), hm_type)
-	  | None -> None
 ;;
 
 (* Возвращает: list из token-ов. *)
@@ -565,7 +576,7 @@ let hm_type_of_string str =
 ;;
 
 (* Алгоритм W, где можно указать внешний контекст. *)
-let algorithm_w_with_context hm_term context =
+let algorithm_w_with_context context hm_term =
 	let rec map_of_list l =
 		if (l = []) then
 			StrMap.empty
@@ -576,8 +587,23 @@ let algorithm_w_with_context hm_term context =
 				StrMap.add var var_type res
 	in
 	let context = (map_of_list context) in
-	match lok_algoritm_w context hm_term ('z', -1) (get_free_vars_from_context context) with
+	let global_vars = get_free_vars_from_context context in
+	let comparator str_1 str_2 =
+		match (StrSet.mem str_1 global_vars, StrSet.mem str_2 global_vars) with
+		  | (false, true) -> false
+		  | (true, false) -> true
+		  | _ -> (str_1 < str_2)
+	in
+	match lok_algoritm_w context hm_term ('z', -1) (get_free_vars_from_context context) comparator with
 	  | Some (substitution, hm_type, new_next_var) ->
+	  	begin
+	  		let filter var var_type = StrSet.mem var global_vars in
+	  		let substitution = StrMap.filter filter substitution in
 	  		Some ((StrMap.bindings substitution), hm_type)
+	  	end
 	  | None -> None
+;;
+
+let algorithm_w hm_term =
+	algorithm_w_with_context [] hm_term
 ;;

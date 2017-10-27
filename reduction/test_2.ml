@@ -92,3 +92,14 @@ check_reduce_to_normal_form ("(\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) 
 							"))))))" ^
 							")))))")
 							"\\x.x";;
+
+let f = "(\\a.\\b.b)";;
+let t = "(\\a.\\b.a)";;
+let _not = "(\\a.a" ^ f ^ t ^ ")";;
+let xor = "(\\a.\\b.a(" ^ _not ^ " b)b)";;
+let _and = "(\\a.\\b.a b " ^ f ^ ")";;
+let _or = "(\\a.\\b."^_not^"("^_and^" ("^_not^" a) ("^_not^" b)))";;
+let _xor = "(\\a.\\b."^_or^" ("^_and^"("^_not^"a)b) ("^_and^"a("^_not^"b)) )";;
+
+check_reduce_to_normal_form (_xor ^ t ^ f) t;;
+
