@@ -237,7 +237,7 @@ module Data = struct
 			data.equations <- StrMap.add var_1 term data.equations
 	;;
 	let get_leader var data = DisjointSet.get_leader var data.disjoint_set;;
-	let add_link var_1 var_2 data =
+	let add_link var_1 var_2 data comparator =
 		let upd leader_1 leader_2 data = 
 			if (StrMap.mem leader_1 data.equations) then
 				begin
@@ -248,38 +248,7 @@ module Data = struct
 		in
 		let var_1 = DisjointSet.get_leader var_1 data.disjoint_set in
 		let var_2 = DisjointSet.get_leader var_2 data.disjoint_set in
-		let is_less var_1 var_2 =
-			let first_char str =
-				if ((String.length str) = 0) then
-					'_'
-				else
-					str.[0]
-			in
-			let c_1 = first_char var_1 in
-			let c_2 = first_char var_2 in
-			if (c_1 < c_2) then
-				true
-			else if (c_1 > c_2) then
-				false
-			else
-			begin
-				let is_composite str =
-					if (String.contains str '<') then       true
-					else if (String.contains str '.') then  true
-					else if (String.contains str '\\') then true
-					else                                    false
-				in
-				let c_1 = is_composite var_1 in
-				let c_2 = is_composite var_2 in
-				if ((c_1 = false) && (c_2 = true)) then
-					true
-				else if ((c_1 = true) && (c_2 = false)) then
-					false
-				else
-					(var_1 < var_2)
-			end
-		in
-		if (is_less var_2 var_1) then
+		if (comparator var_2 var_1) then
 			upd var_1 var_2 data
 		else
 			if (var_1 <> var_2) then
@@ -366,15 +335,16 @@ module Data = struct
 			Some (result.map)
 	;;
 end;;
-
-let solve_system_with_map system =
+(* comparator - задаёт порядок на строках, возвращает true если первая строка меньше второй,
+	и false иначе. Должен различать различные строки. *)
+let solve_system_with_map system comparator =
 	let rec solve data =
 		let rec calc_var_term var_1 term data = 
 			Data.calc_var_term var_1 term data;
 			solve data
 		in
 		let rec calc_var_var var_1 var_2 data =
-			Data.add_link var_1 var_2 data;
+			Data.add_link var_1 var_2 data comparator;
 			solve data
 		in
 		let rec calc_term_term term_1_f term_1_l term_2_f term_2_l data =
@@ -413,9 +383,43 @@ let solve_system_with_map system =
 	solve (Data.create system)
 ;;
 
-let solve_system system = 
-	let res = solve_system_with_map system in
+let standart_comparator var_1 var_2 =
+	let first_char str =
+		if ((String.length str) = 0) then
+			'_'
+		else
+			str.[0]
+	in
+	let c_1 = first_char var_1 in
+	let c_2 = first_char var_2 in
+	if (c_1 < c_2) then
+		true
+	else if (c_1 > c_2) then
+		false
+	else
+	begin
+		let is_composite str =
+			if (String.contains str '<') then       true
+			else if (String.contains str '.') then  true
+			else if (String.contains str '\\') then true
+			else                                    false
+		in
+		let c_1 = is_composite var_1 in
+		let c_2 = is_composite var_2 in
+		if ((c_1 = false) && (c_2 = true)) then
+			true
+		else if ((c_1 = true) && (c_2 = false)) then
+			false
+		else
+			(var_1 < var_2)
+	end
+;;
+
+let solve_system_with_comparator system comparator =
+	let res = solve_system_with_map system comparator in
 	match res with
 	  | None -> None
 	  | Some solution -> Some (StrMap.bindings solution)
 ;;
+
+let solve_system system = solve_system_with_comparator system standart_comparator;;
