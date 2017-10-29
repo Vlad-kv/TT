@@ -90,8 +90,21 @@ let rec merge_sort x =
 let rec string_of_lambda x = 
 	match x with
 	  | Var k        -> k
-	  | Abs (str, l) -> "(\\" ^ str ^ "." ^ (string_of_lambda l) ^ ")"
-	  | App (l1, l2) -> "(" ^ (string_of_lambda l1) ^ " " ^ (string_of_lambda l2) ^ ")"
+	  | Abs (str, l) -> "\\" ^ str ^ "." ^ (string_of_lambda l)
+	  | App (l1, l2) -> 
+	  		let first =
+	  			let res = string_of_lambda l1 in
+	  			match l1 with
+	  			  | Abs(str, l) -> "(" ^ res ^ ")"
+	  			  | _ -> res
+	  		in
+	  		let second = 
+	  			let res = string_of_lambda l2 in
+	  			match l2 with
+	  			  | App(l1, l2) -> "(" ^ res ^ ")"
+	  			  | _ -> res
+	  		in
+	  		first ^ " " ^ second
 ;;
 
 let lambda_of_string str = 
