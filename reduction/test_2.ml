@@ -11,13 +11,6 @@ let test_2_1 = lambda_of_string "\\a0.\\a2.a2";;
 let test_2_2 = lambda_of_string "\\a1.\\a0.a1";;
 assert ((is_alpha_equivalent test_2_1 test_1_2) == false);;
 
-(* print_int (int_of_peano (S(S(S Z))) );;
-print_string "\n";;
-
-print_int 10;;
-let test_str = read_line();;
-print_string test_str;; *)
-
 let test_1_1 = lambda_of_string "a";;
 let test_1_2 = lambda_of_string "\\a.\\b.c";;
 let test_1_3 = "c";;
@@ -70,8 +63,9 @@ check_name_unif "(\\a. (\\a. (\\a. a) (\\a. a) (\\a. a) (\\a. a) (\\a. a) a) a) 
 (*-----------------------------------------------------------*)
 
 let check_reduce_to_normal_form expr result =
-	let res = reduce_to_normal_form (lambda_of_string expr) in
-	print_string ((string_of_lambda res) ^ "\n");
+	let expr = lambda_of_string expr in
+	let res = reduce_to_normal_form expr in
+	print_string ((* (string_of_lambda expr) ^ " ---> " ^  *) (string_of_lambda res) ^ "\n");
 	assert (is_alpha_equivalent res (lambda_of_string result))
 ;;
 
@@ -96,10 +90,51 @@ check_reduce_to_normal_form ("(\\x.x x x)((\\x.x x x) ((\\x.x x x) ((\\x.x x x) 
 let f = "(\\a.\\b.b)";;
 let t = "(\\a.\\b.a)";;
 let _not = "(\\a.a" ^ f ^ t ^ ")";;
-let xor = "(\\a.\\b.a(" ^ _not ^ " b)b)";;
+let _xor = "(\\a.\\b.a(" ^ _not ^ " b)b)";;
 let _and = "(\\a.\\b.a b " ^ f ^ ")";;
 let _or = "(\\a.\\b."^_not^"("^_and^" ("^_not^" a) ("^_not^" b)))";;
-let _xor = "(\\a.\\b."^_or^" ("^_and^"("^_not^"a)b) ("^_and^"a("^_not^"b)) )";;
+let __xor = "(\\a.\\b."^_or^" ("^_and^"("^_not^"a)b) ("^_and^"a("^_not^"b)) )";;
 
-check_reduce_to_normal_form (_xor ^ t ^ f) t;;
+check_reduce_to_normal_form (__xor ^ t ^ f) t;;
+
+let is_zero = "(\\n.n (\\a. "^f^") "^t^")";;
+let _inc = "(\\n.\\f.\\x.n f (f x))";;
+let _mult = "(\\a.\\b.\\f.a (b f))"
+
+let n_0 = "(\\f.\\x.x)";;
+let n_1 = "(\\f.\\x.f x)";;
+let n_2 = "(\\f.\\x.f (f x))";;
+let n_3 = "(\\f.\\x.f (f (f x)))";;
+let n_4 = "(\\f.\\x.f (f (f (f x))))";;
+let n_5 = "(\\f.\\x.f (f (f (f (f x)))))";;
+let n_6 = "(\\f.\\x.f (f (f (f (f (f x))))))";;
+
+check_reduce_to_normal_form (_mult ^ n_2 ^ n_2) n_4;;
+check_reduce_to_normal_form (_mult ^ n_2 ^ n_3) n_6;;
+
+check_reduce_to_normal_form (is_zero ^ n_0) t;;
+check_reduce_to_normal_form (is_zero ^ n_1) f;;
+check_reduce_to_normal_form (is_zero ^ n_2) f;;
+
+let _fst = "(\\x.x "^t^")";;
+let _snd = "(\\x.x "^f^")";;
+let one_step = "(\\pair. \\s.s ("^_snd^"pair)("^_inc^"("^_snd^"pair)) )";;
+
+check_reduce_to_normal_form (one_step ^ "(\\s.s"^n_2^n_2^")") ("(\\s.s"^n_2^n_3^")");;
+
+let _dec = "(\\n."^_fst^"(n "^one_step^" (\\s.s"^n_0^n_0^")) )";;
+
+check_reduce_to_normal_form (_dec ^ n_0) n_0;;
+check_reduce_to_normal_form (_dec ^ n_1) n_0;;
+check_reduce_to_normal_form (_dec ^ n_2) n_1;;
+check_reduce_to_normal_form (_dec ^ n_3) n_2;;
+
+let y_comb = "(\\f.(\\x.f(x x)) (\\x.f(x x)))";;
+let fact_base = "(\\f.\\n.("^is_zero^"n)"^n_1^"("^_mult^"n (f ("^_dec^" n)) ))";;
+let fact = "("^y_comb ^ fact_base^")";;
+
+check_reduce_to_normal_form (fact ^ n_0) n_1;;
+check_reduce_to_normal_form (fact ^ n_1) n_1;;
+check_reduce_to_normal_form (fact ^ n_2) n_2;;
+check_reduce_to_normal_form (fact ^ n_3) n_6;;
 
