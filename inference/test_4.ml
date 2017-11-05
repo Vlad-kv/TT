@@ -1,7 +1,7 @@
 open Hw2_inference;;
 open Hw1;;
 open Hw2_unify;;
-open Hw2;;
+open Hw1_reduction;;
 
 module StrSet = Set.Make(String);;
 module StrMap = Map.Make(String);;

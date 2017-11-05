@@ -1,5 +1,5 @@
 open Hw1;;
-open Hw2;;
+open Hw1_reduction;;
 
 let _ = Gc.set {(Gc.get()) with Gc.stack_limit = 64 * 1024 * 1024};;
 
