@@ -7,6 +7,7 @@ val inc: peano -> peano
 val add: peano -> peano -> peano
 val sub: peano -> peano -> peano
 val mul: peano -> peano -> peano
+val div: peano -> peano -> peano
 val power: peano -> peano -> peano
 
 val rev: 'a list -> 'a list
