@@ -375,8 +375,10 @@ let reduce_to_normal_form expr =
 	  Возвращает: (new_expr, new_memory, new_next_var, is_it_fully_reducted), где is_it_fully_reducted - отредуцировали ли выражение до конца.
 	*)
 	let rec lok_reduction orig_expr memory used_global_vars next_var is_prev_was_app =
-		(* Если данное выражение раньше отредуцировалось, то возвращает Some(результат), иначе - None. *)
-		let lok_try_to_find expr memory = 
+		(* Если данное выражение раньше отредуцировалось, то возвращает Some(result, new_next_var), иначе - None.
+		   Заодно переименовывает локальные переменные, используя used_global_vars next_var.
+		*)
+		let lok_try_to_find expr memory used_global_vars next_var = 
 			if (LambdaMap.mem expr memory) then
 				match (LambdaMap.find expr memory) with
 				  (reducted_expr, key_lambda) ->
@@ -399,29 +401,44 @@ let reduce_to_normal_form expr =
 		  				let inv_expr_map = inverse_map expr_global_map in
 		  				let upd_map var = StrMap.find var inv_expr_map in
 		  				let composed_map = StrMap.map upd_map key_lambda_global_map in
-		  				let rec rename_global_vars expr map =
+		  				(* Возвращает (updated_expr, new_next_var) *)
+		  				let rec rename_vars expr global_map lokal_map next_var =
 		  					match expr with
 		  					  | Var(var) ->
-		  					  		if (StrMap.mem var map) then
-		  					  			Var(StrMap.find var map)
+		  					  		if (StrMap.mem var lokal_map) then
+		  					  			(Var(StrMap.find var lokal_map), next_var)
 		  					  		else
-		  					  			Var(var)
-		  					  | App(expr_1, expr_2) -> 
-		  					  		App(rename_global_vars expr_1 map, rename_global_vars expr_2 map)
+		  					  			(Var(StrMap.find var global_map), next_var)
+		  					  | App(expr_1, expr_2) ->
+		  					  	begin
+		  					  		match (rename_vars expr_1 global_map lokal_map next_var) with
+		  					  		  (updated_expr_1, new_next_var) ->
+		  					  		begin
+		  					  			match (rename_vars expr_2 global_map lokal_map new_next_var) with
+		  					  			  (updated_expr_2, new_next_var) ->
+		  					  			    (App(updated_expr_1, updated_expr_2), new_next_var)
+		  					  		end
+		  					  	end
 		  					  | Abs(var, expr_1) ->
-		  					  		Abs(var, rename_global_vars expr_1 (StrMap.remove var map))
+		  					  	begin
+		  					  		assert(not (StrMap.mem var lokal_map));
+		  					  		let new_var = get_next_var next_var used_global_vars in
+									match (rename_vars expr_1 global_map (StrMap.add var (string_of_var new_var) lokal_map) new_var) with
+		  					  		  (updated_expr, new_next_var) ->
+		  					  		    (Abs(string_of_var new_var, updated_expr), new_next_var)
+		  					  	end
 		  				in
-		  				Some(rename_global_vars reducted_expr composed_map)
+		  				Some(rename_vars reducted_expr composed_map StrMap.empty next_var)
 		  			end
 		  		end
 	  		else
 	  			None
 		in
-		(* Если данное выражение раньше отредуцировалось, то возвращает результат, иначе - возвращает его самого. *)
-		let try_to_find expr memory =
-			match (lok_try_to_find expr memory) with
-			  | None -> expr
-			  | Some(res) -> res
+		(* Если данное выражение раньше отредуцировалось, то возвращает результат, иначе - возвращает его самого в паре с новой перменной. *)
+		let try_to_find expr memory used_global_vars next_var =
+			match (lok_try_to_find expr memory used_global_vars next_var) with
+			  | None -> (expr, next_var)
+			  | Some(result, new_next_var) -> (result, new_next_var)
 		in
 		(* Выполняет подстановку и заодно переименовывает связанные переменные при каждой подстановке в new_expr для того, чтобы не было повторяющихся
 		   имён переменных.
@@ -484,14 +501,20 @@ let reduce_to_normal_form expr =
 					to_ret
 			end
 		in
-		match (lok_try_to_find orig_expr memory) with
-		  | Some(res) -> (res, memory, next_var, true)
+		match (lok_try_to_find orig_expr memory used_global_vars next_var) with
+		  | Some(result, new_next_var) -> (result, memory, new_next_var, true)
 		  | None ->
 		  begin
 			match orig_expr with
 			  | App(Abs(var, expr_1), expr_2) ->
-			  		let expr_2 = try_to_find expr_2 memory in
-			  		let expr_1 = try_to_find expr_1 memory in
+			  		let find_res = try_to_find expr_2 memory used_global_vars next_var in
+			  		let expr_2 = fst find_res in
+			  		let next_var = snd find_res in
+
+			  		let find_res = try_to_find expr_1 memory used_global_vars next_var in
+			  		let expr_1 = fst find_res in
+			  		let next_var = snd find_res in
+
 			  		let subst_expr_res = (substitute_with_renaming expr_1 var expr_2 next_var used_global_vars) in
 			  		let to_ret = lok_reduction (fst subst_expr_res) memory used_global_vars (snd subst_expr_res) is_prev_was_app in
 			  		upd_memory orig_expr to_ret
